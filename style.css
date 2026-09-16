@@ -1,0 +1,172 @@
+@import url('https://fonts.googleapis.com/css2?family=Kanit:wght@400;600;700;800&display=swap');
+
+:root{
+  --green: #C8FA5C;
+  --ink: #141414;
+  --bg: #ffffff;
+  --shadow: rgba(0,0,0,0.28);
+
+  --red: #F65358;
+  --blue: #4E5FF0;
+  --black: #171717;
+  --orange: #FDB255;
+  --roblox: #202020;
+  --suno: #6C5CE7;
+  --facebook: #1877F2;
+}
+
+*{ box-sizing: border-box; }
+
+html, body{
+  margin:0;
+  padding:0;
+  background:#000; /* prevents white flash while the transition video loads */
+  font-family:'Kanit', sans-serif;
+}
+
+body{
+  background:var(--bg);
+  color:var(--ink);
+  overflow-x:hidden;
+}
+
+.page{
+  position:relative;
+  min-height:100vh;
+  padding: 56px 32px 80px 150px;
+}
+
+.sidebar-bar{
+  position:absolute;
+  left:24px;
+  top:150px;
+  width:56px;
+  height:520px;
+  max-height:60vh;
+  background:var(--green);
+  border-radius:40px;
+  box-shadow: 6px 6px 0 var(--shadow);
+}
+
+.heading{
+  font-weight:800;
+  font-size: clamp(2.2rem, 6vw, 3.4rem);
+  margin: 0 0 36px 0;
+  color:var(--ink);
+  line-height:1;
+}
+
+.subheading{
+  font-weight:600;
+  font-size: 1rem;
+  color:#666;
+  margin:-24px 0 32px 0;
+}
+
+.btn-grid{
+  display:flex;
+  flex-wrap:wrap;
+  gap: 22px;
+  max-width: 760px;
+}
+
+.btn{
+  --btn-bg: var(--black);
+  --btn-fg: #ffffff;
+  display:inline-flex;
+  align-items:center;
+  gap: 14px;
+  background: var(--btn-bg);
+  color: var(--btn-fg);
+  text-decoration:none;
+  padding: 10px 28px 10px 10px;
+  border-radius: 999px;
+  border: 3px dashed rgba(255,255,255,0.55);
+  box-shadow: 6px 6px 0 var(--shadow);
+  font-weight:700;
+  font-size: 1.15rem;
+  cursor:pointer;
+  white-space:nowrap;
+  transform: translate(0,0);
+  transition: transform .15s ease, box-shadow .15s ease, filter .15s ease;
+  user-select:none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.btn:hover{
+  transform: translate(-3px,-3px);
+  box-shadow: 9px 9px 0 var(--shadow);
+  filter:brightness(1.04);
+}
+
+.btn:active,
+.btn.is-pressed{
+  transform: translate(4px,4px);
+  box-shadow: 1px 1px 0 var(--shadow);
+  filter:brightness(0.96);
+  transition: transform .06s ease, box-shadow .06s ease;
+}
+
+.btn .icon{
+  flex: none;
+  width:52px;
+  height:52px;
+  border-radius:50%;
+  background:#fff;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  border: 3px solid #fff;
+  box-shadow: 0 0 0 2px rgba(0,0,0,0.15) inset;
+  overflow:hidden;
+}
+
+.btn .icon svg{ width:26px; height:26px; display:block; }
+
+.btn-youtube{ --btn-bg: var(--red); }
+.btn-discord{ --btn-bg: var(--blue); }
+.btn-tiktok{ --btn-bg: var(--black); }
+.btn-other{ --btn-bg: var(--orange); }
+.btn-roblox{ --btn-bg: var(--roblox); }
+.btn-suno{ --btn-bg: var(--suno); }
+.btn-facebook{ --btn-bg: var(--facebook); }
+.btn-back{ --btn-bg: var(--green); --btn-fg:#141414; border-color: rgba(0,0,0,0.35); }
+.btn-back .icon{ box-shadow: 0 0 0 2px rgba(0,0,0,0.15) inset; }
+
+/* ---------- transition overlay ---------- */
+#transition-overlay{
+  position:fixed;
+  inset:0;
+  z-index:9999;
+  background:#000;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  opacity:1;
+  transition: opacity .45s ease;
+}
+#transition-overlay.hidden{
+  opacity:0;
+  pointer-events:none;
+}
+#transition-overlay video{
+  width:100%;
+  height:100%;
+  object-fit:cover;
+  display:block;
+}
+
+footer.made-by{
+  margin-top:60px;
+  margin-left:0;
+  font-size:.8rem;
+  color:#aaa;
+  font-weight:600;
+}
+
+@media (max-width:640px){
+  .page{ padding: 40px 20px 60px 96px; }
+  .sidebar-bar{ left:14px; width:40px; height:60vh; top:120px; }
+  .btn{ font-size:1rem; padding:8px 20px 8px 8px; }
+  .btn .icon{ width:44px; height:44px; }
+}
