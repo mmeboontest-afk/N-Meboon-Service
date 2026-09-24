@@ -81,3 +81,55 @@ public/
 3. เปิดไฟล์ `server.js` แล้วเพิ่มบรรทัด `require('./bot.js');` เพื่อให้บอทเริ่มทำงานพร้อมเว็บ
 
 ถ้าบอทมีงานหนักหรืออยากให้แยกกันชัดเจนไม่กระทบกัน แนะนำสร้างเป็น Render service แยกอีกตัวแบบ **Background Worker** สำหรับรันบอทโดยเฉพาะจะเสถียรกว่า
+
+---
+
+# 🤖 Discord Bot — N'Meboon Fan Club
+
+ตอนนี้โปรเจกต์นี้มีบอท Discord จริงแล้ว (`bot.js`) รันพร้อมกับเว็บเซิร์ฟเวอร์ในตัวเดียวกัน ทำได้:
+
+- สั่ง **`/summon information`** → เสกการ์ดกฎ + ข้อมูล พร้อมปุ่ม Verify My Account / Email Verify / ใส่รหัส OTP (ตรงกับภาพตัวอย่างที่ส่งมา)
+- กด **Verify My Account** → บอท DM ไปหาผู้ใช้ พร้อมปุ่ม **It's Me!**
+- กด **It's Me!** ใน DM → บอทออกรหัส OTP รูปแบบ `ชื่อผู้ใช้ + วันเดือนปีปัจจุบัน + #เลข5หลักไม่ซ้ำ` เช่น `NMeboon24092026#31664` ให้ในกรอบโค้ด กดแตะเพื่อคัดลอกได้เลย (รหัสหมดอายุใน 10 นาที ปรับได้ที่ `otpStore.js`)
+- กลับมากด **🔑 ใส่รหัส OTP** ที่ข้อความในเซิร์ฟเวอร์ → เด้ง popup ให้วางรหัส → ถ้าถูกต้อง บอทจะให้ยศ **✅ VERIFIED** ให้อัตโนมัติ
+
+รายชื่อ role ID ทั้งหมดที่ให้มา เก็บไว้ที่ `config/roles.js` แล้ว (ใช้แล้วตอนนี้แค่ตัว VERIFIED ส่วนที่เหลือเตรียมไว้ให้ฟีเจอร์ถัดไปเรียกใช้ได้เลย)
+
+## วิธีตั้งค่าบอทให้ใช้งานได้จริง
+
+### 1) สร้างบอทใน Discord Developer Portal
+1. ไปที่ https://discord.com/developers/applications → **New Application** ตั้งชื่อ (เช่น N'Meboon AI)
+2. ไปแท็บ **Bot** (ถ้ายังไม่มี bot user ให้กด Add Bot)
+3. เปิด **Privileged Gateway Intents** → ติ๊กเปิด **SERVER MEMBERS INTENT** (จำเป็น เพราะบอทต้องให้ยศสมาชิก)
+4. กด **Reset Token** เพื่อคัดลอก token มาเก็บไว้ (อันนี้คือค่า `MAIN_DISCORD_TOKEN`)
+5. ไปแท็บ **General Information** คัดลอก **Application ID** มาเก็บไว้ (อันนี้คือค่า `DISCORD_CLIENT_ID`)
+
+### 2) เชิญบอทเข้าเซิร์ฟเวอร์
+ไปแท็บ **OAuth2 → URL Generator** เลือก:
+- **Scopes:** `bot`, `applications.commands`
+- **Bot Permissions:** อย่างน้อย `Send Messages`, `Embed Links`, `Manage Roles`, `Use Slash Commands`, `Read Message History`
+
+คัดลอกลิงก์ที่ได้ไปเปิดในเบราว์เซอร์แล้วเลือกเซิร์ฟเวอร์เพื่อเชิญบอทเข้า
+
+**⚠️ สำคัญมาก:** หลังเชิญเข้าแล้ว ไปที่ตั้งค่าเซิร์ฟเวอร์ → Roles → **ลากยศของบอท (เช่น 🤖 BOT / AI) ให้อยู่ "สูงกว่า" ยศ ✅ VERIFIED**เสมอ ไม่งั้นบอทจะให้ยศ Verified กับใครไม่ได้เลย (ติด role hierarchy ของ Discord เอง)
+
+### 3) หา Guild ID (ไอดีเซิร์ฟเวอร์)
+เปิด Discord → Settings → Advanced → เปิด **Developer Mode** → คลิกขวาที่ไอคอนเซิร์ฟเวอร์ → **Copy Server ID** อันนี้คือค่า `DISCORD_GUILD_ID` (ใส่ค่านี้ไว้ช่วยให้ `/summon` ขึ้นทันทีหลัง deploy ไม่ต้องรอนานเป็นชั่วโมงแบบลงทะเบียนคำสั่งแบบ global)
+
+### 4) ตั้งค่า Environment Variables บน Render
+ไปแท็บ **Environment** ของ Web Service เดิม (ตัวเดียวกับเว็บไซต์) เพิ่ม:
+
+| ตัวแปร | ค่า |
+|---|---|
+| `MAIN_DISCORD_TOKEN` | token จากขั้นตอนที่ 1 |
+| `DISCORD_CLIENT_ID` | Application ID จากขั้นตอนที่ 1 |
+| `DISCORD_GUILD_ID` | Server ID จากขั้นตอนที่ 3 |
+| `SITE_MENU_URL` | ลิงก์เว็บหน้า Menu ของคุณ (ใช้ในปุ่ม 📋 Menu ของการ์ด) |
+| `SITE_VERIFY_URL` | ลิงก์ที่อยากให้ปุ่ม ✅ Verify ชี้ไป |
+
+กด **Manual Deploy** อีกครั้งหลังตั้งค่าเสร็จ เปิด **Logs** ดูว่าขึ้น `[bot] Logged in as ...` และ `[bot] Slash commands registered to guild (instant).` ไหม ถ้าขึ้นแปลว่าใช้งานได้แล้ว ลองพิมพ์ `/summon information` ในเซิร์ฟเวอร์ได้เลย
+
+## หมายเหตุเรื่อง OTP
+- OTP เก็บไว้ใน**หน่วยความจำของบอท (RAM)** เท่านั้น ถ้า Render restart บอท (redeploy, sleep/wake, crash) รหัสที่ค้างอยู่จะหายไป ต้องกด Verify My Account ขอรหัสใหม่ — เหมาะกับการทดลองใช้งานตอนนี้ ถ้าจะเอาขึ้นจริงจังในอนาคตแนะนำเก็บลงฐานข้อมูลแทน (บอกได้เดี๋ยวจัดให้)
+- รหัสหมดอายุอัตโนมัติใน 10 นาที ปรับได้ที่ค่า `OTP_EXPIRY_MS` ในไฟล์ `otpStore.js`
+- ปุ่ม **📧 Email Verify** ตอนนี้ยังเป็นแค่ข้อความ "เร็วๆ นี้" ไว้ก่อน (บอกมาได้เมื่อพร้อมทำหัวข้อนี้ต่อ)

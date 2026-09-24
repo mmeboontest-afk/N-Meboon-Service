@@ -95,15 +95,9 @@ app.listen(PORT, () => {
 });
 
 // ---------------------------------------------------------------
-// ต่อยอดทำบอท (เช่น Discord bot) ในโปรเจกต์เดียวกัน:
-//
-// 1) ติดตั้งไลบรารีที่ต้องใช้ เช่น  npm install discord.js
-// 2) สร้างไฟล์ bot.js แยกไว้ต่างหาก แล้วมา require ตรงนี้:
-//        require('./bot.js');
-//    เพื่อให้บอทเริ่มทำงานพร้อมกับตอนเว็บเซิร์ฟเวอร์ start ขึ้นมา
-//
-// หมายเหตุ: ถ้าบอทมีงานหนักหรืออยากแยกความรับผิดชอบชัดเจน
-// แนะนำให้สร้างเป็น Render service แยกต่างหากชนิด "Background Worker"
-// (ไม่ต้องเปิดพอร์ต ไม่ต้องเสิร์ฟเว็บ) แล้วรันบอทอยู่ในนั้นแทน
-// จะเสถียรกว่าการฝังไว้ในเว็บเซิร์ฟเวอร์ตัวเดียวกัน
+// Discord bot (N'Meboon Fan Club) — starts automatically as long as
+// MAIN_DISCORD_TOKEN is set in the environment. If it's not set, bot.js
+// logs a notice and does nothing, so the web service still runs fine
+// on its own (e.g. while you're still setting up the bot's env vars).
 // ---------------------------------------------------------------
+require('./bot.js');
