@@ -1,12 +1,12 @@
-// Simple Express server for hosting the N'Meboon link site as a Render Web Service.
-// Serves everything inside /public as static files, plus a small /api/youtube
-// endpoint that looks up subscriber count + latest video via YouTube Data API v3.
+// Express server for hosting the N'Meboon link site as a Render Web Service.
 //
-// Required environment variables (set these in Render → Environment):
-//   YOUTUBE_API_KEY   - an API key from Google Cloud Console with
-//                        "YouTube Data API v3" enabled
-//   YOUTUBE_HANDLE     - channel handle without the @, e.g. NongMeboon
-//                        (optional — defaults to NongMeboon)
+// IMPORTANT: this version serves the front-end files straight from the
+// project root (same folder as this file) — index.html, menu.html,
+// style.css, script.js, transition.mp4, transition.webm — because that's
+// how the files actually ended up in the GitHub repo (renaming files into
+// a public/ subfolder isn't possible for videos through the GitHub web
+// editor on mobile). Only these specific files are served, so the bot's
+// source code (server.js, bot.js, otpStore.js, package.json) stays private.
 
 const express = require('express');
 const path = require('path');
@@ -14,7 +14,28 @@ const path = require('path');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-app.use(express.static(path.join(__dirname, 'public')));
+// Only these files are ever handed out — nothing else in the repo root
+// (like bot.js or server.js itself) is reachable over HTTP.
+const FRONTEND_FILES = [
+  'index.html',
+  'menu.html',
+  'style.css',
+  'script.js',
+  'transition.mp4',
+  'transition.webm',
+];
+
+FRONTEND_FILES.forEach((file) => {
+  app.get('/' + file, (req, res) => {
+    res.sendFile(path.join(__dirname, file), (err) => {
+      if (err) res.status(404).send('Not found');
+    });
+  });
+});
+
+app.get('/', (req, res) => {
+  res.sendFile(path.join(__dirname, 'index.html'));
+});
 
 // ---------------------------------------------------------------
 // YouTube Data API v3
@@ -87,7 +108,7 @@ app.get('/api/youtube', async (req, res) => {
 
 // Fallback: unknown routes go back to the home page.
 app.get('*', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+  res.sendFile(path.join(__dirname, 'index.html'));
 });
 
 app.listen(PORT, () => {
@@ -96,8 +117,6 @@ app.listen(PORT, () => {
 
 // ---------------------------------------------------------------
 // Discord bot (N'Meboon Fan Club) — starts automatically as long as
-// MAIN_DISCORD_TOKEN is set in the environment. If it's not set, bot.js
-// logs a notice and does nothing, so the web service still runs fine
-// on its own (e.g. while you're still setting up the bot's env vars).
+// MAIN_DISCORD_TOKEN is set in the environment.
 // ---------------------------------------------------------------
 require('./bot.js');
