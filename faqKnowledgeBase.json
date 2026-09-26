@@ -1,0 +1,82 @@
+[
+  {
+    "id": "rule-spam",
+    "keywords": ["spam", "spamming", "flood", "flooding", "too many messages"],
+    "answer": "Spamming (sending messages too fast/repeatedly) isn't allowed — it's a Low level rule violation and can get you muted for 3–60 minutes if it adds up to enough points."
+  },
+  {
+    "id": "rule-gif",
+    "keywords": ["gif", "gifs", "animated image", "animated picture"],
+    "answer": "GIFs aren't allowed in chat. Any GIF you post gets auto-deleted immediately — no penalty, it's just removed."
+  },
+  {
+    "id": "rule-ping",
+    "keywords": ["ping", "pinging", "mention", "mentions", "@everyone", "tagging"],
+    "answer": "Excessive pinging (like @everyone or tagging a bunch of people at once) isn't allowed — it's a Low level rule and can lead to a mute."
+  },
+  {
+    "id": "rule-links",
+    "keywords": ["link", "links", "url", "website link", "posting links"],
+    "answer": "Links aren't allowed in chat. Any link you post gets auto-deleted immediately — no penalty, it's just removed."
+  },
+  {
+    "id": "rule-nsfw-violence",
+    "keywords": ["nsfw", "violence", "violent", "gore", "explicit content", "adult content"],
+    "answer": "NSFW and violent content are strictly not allowed (High level). This is taken seriously and can lead to longer mutes (10 minutes to 48 hours)."
+  },
+  {
+    "id": "penalty-table",
+    "keywords": ["penalty", "punishment", "mute", "how long mute", "points", "pts"],
+    "answer": "Penalties scale with rule level: Low < 15 pts = mute 3–60 min. Mid < 10 pts = mute 5–180 min. High < 5 pts = mute 10 min to 48 hours. Fewer points needed at higher severity means it escalates faster."
+  },
+  {
+    "id": "verify-howto",
+    "keywords": ["verify", "verification", "how to verify", "get verified", "otp", "verified role"],
+    "answer": "To verify: click 'Verify My Account' on the info card, then click 'It's Me!' in the DM I send you — I'll give you an OTP code there. Come back to the info card and click 'Enter OTP' to type it in and get verified."
+  },
+  {
+    "id": "level-xp",
+    "keywords": ["level", "xp", "level up", "how to level up", "experience", "leveling"],
+    "answer": "You earn 1 XP per chat message and 10 XP per minute in a voice channel. Level requirements grow the higher you go (like Minecraft). Level-ups get announced automatically, and there are monthly/yearly XP leaderboards."
+  },
+  {
+    "id": "region-role",
+    "keywords": ["region", "continent", "country", "where are you from role", "location role"],
+    "answer": "Use /summon card:Region to pick your continent and country from the menus — this gives you the matching region roles. You can change your pick anytime."
+  },
+  {
+    "id": "channel-info",
+    "keywords": ["info channel", "rules channel", "where are the rules"],
+    "answer": "The server rules and info card live in the Info channel — you can also summon it anytime with /summon card:Information."
+  },
+  {
+    "id": "channel-level-up",
+    "keywords": ["level up channel", "where do level ups get announced"],
+    "answer": "Level-up announcements and the monthly/yearly XP leaderboard get posted in the Level-Up channel."
+  },
+  {
+    "id": "channel-welcome",
+    "keywords": ["welcome channel", "new member channel"],
+    "answer": "New members get greeted in the Welcome channel."
+  },
+  {
+    "id": "channel-event",
+    "keywords": ["event channel", "events", "upcoming event"],
+    "answer": "Server events are announced in the Event channel."
+  },
+  {
+    "id": "channel-minigames",
+    "keywords": ["minigames channel", "mini games", "games channel"],
+    "answer": "MiniGames is the channel for game-related activities in the server."
+  },
+  {
+    "id": "channel-warning",
+    "keywords": ["warning channel", "where do warnings go", "mod alerts"],
+    "answer": "Automatic rule-violation warnings from the moderation system get posted in the Warning channel."
+  },
+  {
+    "id": "feedback-howto",
+    "keywords": ["feedback", "suggestion", "report bug", "report a problem", "found a bug"],
+    "answer": "Use /summon card:Feedback — you'll get buttons to send feedback, report a bug, or ask a question directly."
+  }
+]

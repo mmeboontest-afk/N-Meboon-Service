@@ -20,6 +20,7 @@ const {
 const { addXp, getLeaderboard, resetPeriod, getMonthKey, getYearKey, getLastMonthKey, setLastMonthKey, getLastYearKey, setLastYearKey } = require('./levelSystem');
 const { moderateMessage } = require('./moderation');
 const region = require('./region');
+const faqEngine = require('./faqEngine');
 
 const ROLES = {
   MANAGEMENT: {
@@ -59,6 +60,8 @@ const VERIFY_INFO_URL = process.env.SITE_VERIFY_URL || 'https://n-meboon-service
 const LEVEL_UP_CHANNEL_ID = process.env.LEVEL_UP_CHANNEL_ID || '1504461180863905932';
 const LEADERBOARD_CHANNEL_ID = process.env.LEADERBOARD_CHANNEL_ID || LEVEL_UP_CHANNEL_ID;
 const MOD_ALERT_CHANNEL_ID = process.env.MOD_ALERT_CHANNEL_ID || '1500139152098722053';
+const FEEDBACK_CHANNEL_ID = process.env.FEEDBACK_CHANNEL_ID || '1492844552296337529';
+const QUESTION_TIME_LIMIT_MS = 5 * 60 * 1000; // 5 minutes
 
 const MESSAGE_XP = 1;
 const VOICE_XP_PER_MINUTE = 10;
@@ -95,6 +98,7 @@ const commands = [
         .addChoices(
           { name: 'Information', value: 'information' },
           { name: 'Region', value: 'region' },
+          { name: 'Feedback', value: 'feedback' },
         )
     )
     .setDefaultMemberPermissions(PermissionsBitField.Flags.ManageGuild)
@@ -169,6 +173,70 @@ function buildItsMeRow() {
 }
 
 // ---------------------------------------------------------------
+// Embeds & components — Feedback card
+// ---------------------------------------------------------------
+function buildFeedbackEmbed() {
+  return new EmbedBuilder()
+    .setColor(0x37AEFF)
+    .setTitle('🧷 Feedback & Support')
+    .setDescription(
+      "Got a suggestion, question, or found a bug? Send it here!\n\n" +
+      "**Feedback** — share an idea or suggestion\n" +
+      "**Report an Issue** — tell us about a bug or problem\n" +
+      "**Question** — opens a private channel where our keyword-based helper bot " +
+      "will try to answer from our knowledge base for 5 minutes"
+    )
+    .setFooter({ text: 'Feedback and reports go straight to the team.' });
+}
+
+function buildFeedbackButtons() {
+  return new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setCustomId('feedback_open').setLabel('Feedback').setEmoji('🧷').setStyle(ButtonStyle.Primary),
+    new ButtonBuilder().setCustomId('report_open').setLabel('Report an Issue').setEmoji('🐛').setStyle(ButtonStyle.Danger),
+    new ButtonBuilder().setCustomId('question_open').setLabel('Question').setEmoji('❓').setStyle(ButtonStyle.Secondary),
+  );
+}
+
+function buildFeedbackModal(customId, title) {
+  const modal = new ModalBuilder().setCustomId(customId).setTitle(title);
+  const input = new TextInputBuilder()
+    .setCustomId('feedback_text')
+    .setLabel('Describe it here')
+    .setStyle(TextInputStyle.Paragraph)
+    .setPlaceholder('Type as much detail as you can...')
+    .setRequired(true)
+    .setMaxLength(1000);
+  modal.addComponents(new ActionRowBuilder().addComponents(input));
+  return modal;
+}
+
+// ---------------------------------------------------------------
+// Nickname leveling — keeps "<nickname> Lv<N>" in sync automatically.
+// Bots can never change the server owner's nickname (Discord platform
+// rule) — that failure is caught and ignored, not a bug.
+// ---------------------------------------------------------------
+function stripLevelSuffix(name) {
+  return name.replace(/\s*Lv\d+\s*$/i, '').trim();
+}
+
+async function syncNicknameLevel(member, level) {
+  try {
+    const base = stripLevelSuffix(member.nickname || member.user.username);
+    const suffix = ` Lv${level}`;
+    const maxBaseLen = 32 - suffix.length;
+    const trimmedBase = base.length > maxBaseLen ? base.slice(0, maxBaseLen).trim() : base;
+    const desired = `${trimmedBase}${suffix}`;
+
+    if (member.nickname === desired) return; // already correct, skip the API call
+    await member.setNickname(desired);
+  } catch (err) {
+    // Most common cause: trying to rename the server owner, or the bot's
+    // role isn't above this member's highest role. Not fatal — skip it.
+    console.log(`[bot] Could not update nickname for ${member.id}: ${err.message}`);
+  }
+}
+
+// ---------------------------------------------------------------
 // Embeds & components — Region picker
 // ---------------------------------------------------------------
 function buildRegionEmbed() {
@@ -240,9 +308,12 @@ async function announceLevelUp(userId, newLevel) {
   }
 }
 
-async function handleXpGain(userId, amount) {
-  const result = addXp(userId, amount);
-  if (result.leveledUp) await announceLevelUp(userId, result.newLevel);
+async function handleXpGain(member, amount) {
+  const result = addXp(member.id, amount);
+  if (result.leveledUp) {
+    await announceLevelUp(member.id, result.newLevel);
+    await syncNicknameLevel(member, result.newLevel);
+  }
 }
 
 async function postLeaderboard(period, title) {
@@ -293,7 +364,7 @@ async function tickVoiceXp() {
       if (channel.type !== ChannelType.GuildVoice && channel.type !== ChannelType.GuildStageVoice) continue;
       for (const member of channel.members.values()) {
         if (member.user.bot) continue;
-        await handleXpGain(member.id, VOICE_XP_PER_MINUTE);
+        await handleXpGain(member, VOICE_XP_PER_MINUTE);
       }
     }
   }
@@ -348,7 +419,7 @@ client.on(Events.MessageCreate, async (message) => {
       return; // flagged messages don't earn XP
     }
 
-    await handleXpGain(message.author.id, MESSAGE_XP);
+    await handleXpGain(message.member ?? await message.guild.members.fetch(message.author.id), MESSAGE_XP);
   } catch (err) {
     console.error('[bot] Message handling error:', err.message);
   }
@@ -381,6 +452,14 @@ client.on(Events.InteractionCreate, async (interaction) => {
         await interaction.reply({
           embeds: [buildRegionEmbed()],
           components: buildRegionComponents(),
+        });
+        return;
+      }
+
+      if (card === 'feedback') {
+        await interaction.reply({
+          embeds: [buildFeedbackEmbed()],
+          components: [buildFeedbackButtons()],
         });
         return;
       }
@@ -531,6 +610,93 @@ client.on(Events.InteractionCreate, async (interaction) => {
           content: "⚠️ Your code was correct, but I couldn't assign the role (check that my role is above @Verified and I have Manage Roles). Please ping an admin for help.",
           ephemeral: true,
         });
+      }
+      return;
+    }
+
+    // ---- "Feedback" button → modal ----
+    if (interaction.isButton() && interaction.customId === 'feedback_open') {
+      await interaction.showModal(buildFeedbackModal('feedback_modal', 'Send Feedback'));
+      return;
+    }
+
+    // ---- "Report an Issue" button → modal ----
+    if (interaction.isButton() && interaction.customId === 'report_open') {
+      await interaction.showModal(buildFeedbackModal('report_modal', 'Report an Issue'));
+      return;
+    }
+
+    // ---- Feedback / Report modal submit → forward to the team channel ----
+    if (interaction.isModalSubmit() && (interaction.customId === 'feedback_modal' || interaction.customId === 'report_modal')) {
+      const isReport = interaction.customId === 'report_modal';
+      const text = interaction.fields.getTextInputValue('feedback_text');
+
+      try {
+        const channel = await client.channels.fetch(FEEDBACK_CHANNEL_ID);
+        const embed = new EmbedBuilder()
+          .setColor(isReport ? 0xFF5C5C : 0x37AEFF)
+          .setTitle(isReport ? '🐛 New Bug Report' : '🧷 New Feedback')
+          .setDescription(text)
+          .addFields({ name: 'From', value: `<@${interaction.user.id}> (${interaction.user.tag})` })
+          .setTimestamp();
+        await channel.send({ embeds: [embed] });
+        await interaction.reply({ content: `✅ Thanks! Your ${isReport ? 'report' : 'feedback'} has been sent to the team.`, ephemeral: true });
+      } catch (err) {
+        console.error('[bot] Failed to forward feedback:', err.message);
+        await interaction.reply({ content: "⚠️ Couldn't send that right now — please try again later.", ephemeral: true });
+      }
+      return;
+    }
+
+    // ---- "Question" button → create a temporary Q&A channel ----
+    if (interaction.isButton() && interaction.customId === 'question_open') {
+      await interaction.deferReply({ ephemeral: true });
+
+      try {
+        const channel = await interaction.guild.channels.create({
+          name: `question-${interaction.user.username}`.toLowerCase().slice(0, 90),
+          type: ChannelType.GuildText,
+          parent: interaction.channel?.parentId || undefined,
+          permissionOverwrites: [
+            { id: interaction.guild.roles.everyone.id, deny: [PermissionsBitField.Flags.ViewChannel] },
+            { id: interaction.user.id, allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ReadMessageHistory] },
+            { id: client.user.id, allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages, PermissionsBitField.Flags.ManageChannels] },
+          ],
+        });
+
+        await channel.send({
+          content: `<@${interaction.user.id}>`,
+          embeds: [
+            new EmbedBuilder()
+              .setColor(0x37AEFF)
+              .setTitle('❓ Ask your question')
+              .setDescription(
+                "You have **5 minutes** to ask your question here. I'll try to answer using our knowledge base.\n\n" +
+                "Note: I'm a simple keyword-matching helper, not a real conversational AI — I work best with direct " +
+                "questions about server rules, verification, leveling, etc. This channel auto-deletes when time's up."
+              ),
+          ],
+        });
+
+        await interaction.editReply({ content: `✅ Created ${channel} — you have 5 minutes to ask!` });
+
+        const collector = channel.createMessageCollector({
+          filter: (m) => m.author.id === interaction.user.id,
+          time: QUESTION_TIME_LIMIT_MS,
+        });
+
+        collector.on('collect', async (msg) => {
+          const result = faqEngine.answer(msg.content);
+          await channel.send(result.answer).catch(() => {});
+        });
+
+        collector.on('end', async () => {
+          await channel.send("⏳ Time's up! This channel will be deleted shortly.").catch(() => {});
+          setTimeout(() => channel.delete().catch(() => {}), 10000);
+        });
+      } catch (err) {
+        console.error('[bot] Failed to create question channel:', err.message);
+        await interaction.editReply({ content: "⚠️ I couldn't create a question channel (check my Manage Channels permission). Please ping an admin." });
       }
       return;
     }
