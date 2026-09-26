@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>System Status — N'Meboon</title>
+<meta name="description" content="Live status of N'Meboon's website, Discord bot, and YouTube integration">
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<main class="status-page">
+  <div class="status-header">
+    <h1>System Status</h1>
+    <p>Live health check — refreshes automatically every 30 seconds</p>
+  </div>
+
+  <div id="status-list">
+    <div class="status-row" data-key="website">
+      <span class="status-dot checking"></span>
+      <div class="status-body">
+        <div class="status-name">Website</div>
+        <div class="status-detail">Checking…</div>
+      </div>
+      <span class="status-badge checking">Checking</span>
+    </div>
+    <div class="status-row" data-key="discordBot">
+      <span class="status-dot checking"></span>
+      <div class="status-body">
+        <div class="status-name">Discord Bot</div>
+        <div class="status-detail">Checking…</div>
+      </div>
+      <span class="status-badge checking">Checking</span>
+    </div>
+    <div class="status-row" data-key="youtubeApi">
+      <span class="status-dot checking"></span>
+      <div class="status-body">
+        <div class="status-name">YouTube Integration</div>
+        <div class="status-detail">Checking…</div>
+      </div>
+      <span class="status-badge checking">Checking</span>
+    </div>
+  </div>
+
+  <div class="status-updated" id="status-updated"></div>
+</main>
+
+<script>
+const STATUS_META = {
+  ok:    { dot: 'ok',    badge: 'ok',    label: 'Operational' },
+  warn:  { dot: 'warn',  badge: 'warn',  label: 'Not configured' },
+  down:  { dot: 'down',  badge: 'down',  label: 'Unreachable' },
+};
+
+function applyStatus(key, result) {
+  const row = document.querySelector(`.status-row[data-key="${key}"]`);
+  if (!row) return;
+  const meta = STATUS_META[result.status] || STATUS_META.down;
+  row.querySelector('.status-dot').className = 'status-dot ' + meta.dot;
+  row.querySelector('.status-badge').className = 'status-badge ' + meta.badge;
+  row.querySelector('.status-badge').textContent = meta.label;
+  row.querySelector('.status-detail').textContent = result.detail || '';
+}
+
+async function refreshStatus() {
+  try {
+    const res = await fetch('/api/status', { cache: 'no-store' });
+    const data = await res.json();
+    Object.keys(data).forEach((key) => applyStatus(key, data[key]));
+    document.getElementById('status-updated').textContent =
+      'Last checked: ' + new Date().toLocaleTimeString();
+  } catch (err) {
+    ['website', 'discordBot', 'youtubeApi'].forEach((key) =>
+      applyStatus(key, { status: 'down', detail: 'Could not reach the status API' })
+    );
+  }
+}
+
+refreshStatus();
+setInterval(refreshStatus, 30000);
+</script>
+</body>
+</html>

@@ -52,8 +52,8 @@ const CLIENT_ID = process.env.DISCORD_CLIENT_ID;
 const GUILD_ID = process.env.DISCORD_GUILD_ID; // optional but recommended for instant command sync
 
 // Adjust these to your actual pages once the site is live.
-const MENU_LINK_URL = process.env.SITE_MENU_URL || 'https://your-site.onrender.com';
-const VERIFY_INFO_URL = process.env.SITE_VERIFY_URL || 'https://your-site.onrender.com';
+const MENU_LINK_URL = process.env.SITE_MENU_URL || 'https://meboonmenulink.carrd.co';
+const VERIFY_INFO_URL = process.env.SITE_VERIFY_URL || 'https://n-meboon-service.onrender.com/Login';
 
 // Level system channels — defaults match what was given; override via env if needed.
 const LEVEL_UP_CHANNEL_ID = process.env.LEVEL_UP_CHANNEL_ID || '1504461180863905932';
@@ -87,19 +87,21 @@ const client = new Client({
 const commands = [
   new SlashCommandBuilder()
     .setName('summon')
-    .setDescription('Summon a functional card/message for the server')
-    .addSubcommand(sub =>
-      sub.setName('information')
-        .setDescription("Post the N'Meboon Fan Club rules + info card with verification buttons")
+    .setDescription('Summon a card for the server')
+    .addStringOption(opt =>
+      opt.setName('card')
+        .setDescription('Which card to summon')
+        .setRequired(true)
+        .addChoices(
+          { name: 'Information', value: 'information' },
+          { name: 'Region', value: 'region' },
+        )
     )
-    .addSubcommand(sub =>
-      sub.setName('region')
-        .setDescription('Post the continent/country self-select role menu')
-    )
-    .addSubcommand(sub =>
-      sub.setName('region-audit')
-        .setDescription('DM the region picker to every member who has no continent/country role yet')
-    )
+    .setDefaultMemberPermissions(PermissionsBitField.Flags.ManageGuild)
+    .toJSON(),
+  new SlashCommandBuilder()
+    .setName('region-audit')
+    .setDescription('DM the region picker to every member who has no continent/country role yet')
     .setDefaultMemberPermissions(PermissionsBitField.Flags.ManageGuild)
     .toJSON(),
 ];
@@ -184,6 +186,8 @@ function buildRegionComponents() {
   const continentMenu = new StringSelectMenuBuilder()
     .setCustomId('region_continent_select')
     .setPlaceholder('Select your continent')
+    .setMinValues(1)
+    .setMaxValues(1)
     .addOptions(
       { label: 'Asia', value: region.CONTINENTS.ASIA, emoji: '🌏' },
       { label: 'Europe', value: region.CONTINENTS.EUROPE, emoji: '🌍' },
@@ -193,6 +197,8 @@ function buildRegionComponents() {
   const countryMenu = new StringSelectMenuBuilder()
     .setCustomId('region_country_select')
     .setPlaceholder('Select your country')
+    .setMinValues(1)
+    .setMaxValues(1)
     .addOptions(
       { label: 'Thailand', value: region.COUNTRIES.THAILAND, emoji: '🇹🇭' },
       { label: 'Japan', value: region.COUNTRIES.JAPAN, emoji: '🇯🇵' },
@@ -361,9 +367,9 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
     // ---- /summon ----
     if (interaction.isChatInputCommand() && interaction.commandName === 'summon') {
-      const sub = interaction.options.getSubcommand();
+      const card = interaction.options.getString('card');
 
-      if (sub === 'information') {
+      if (card === 'information') {
         await interaction.reply({
           embeds: [buildInformationEmbed()],
           components: [buildInformationButtons()],
@@ -371,41 +377,42 @@ client.on(Events.InteractionCreate, async (interaction) => {
         return;
       }
 
-      if (sub === 'region') {
+      if (card === 'region') {
         await interaction.reply({
           embeds: [buildRegionEmbed()],
           components: buildRegionComponents(),
         });
         return;
       }
+      return;
+    }
 
-      if (sub === 'region-audit') {
-        await interaction.deferReply({ ephemeral: true });
-        const members = await interaction.guild.members.fetch();
-        let dmed = 0;
-        let skippedHasRole = 0;
-        let failed = 0;
+    // ---- /region-audit ----
+    if (interaction.isChatInputCommand() && interaction.commandName === 'region-audit') {
+      await interaction.deferReply({ ephemeral: true });
+      const members = await interaction.guild.members.fetch();
+      let dmed = 0;
+      let skippedHasRole = 0;
+      let failed = 0;
 
-        for (const member of members.values()) {
-          if (member.user.bot) continue;
-          if (region.hasAnyRegionRole(member)) { skippedHasRole++; continue; }
-          try {
-            const dm = await member.createDM();
-            await dm.send({ embeds: [buildRegionEmbed()], components: buildRegionComponents() });
-            dmed++;
-          } catch {
-            failed++;
-          }
+      for (const member of members.values()) {
+        if (member.user.bot) continue;
+        if (region.hasAnyRegionRole(member)) { skippedHasRole++; continue; }
+        try {
+          const dm = await member.createDM();
+          await dm.send({ embeds: [buildRegionEmbed()], components: buildRegionComponents() });
+          dmed++;
+        } catch {
+          failed++;
         }
-
-        await interaction.editReply({
-          content: `✅ Region audit complete.\n` +
-            `📨 DMed: ${dmed}\n` +
-            `✔️ Already had a region: ${skippedHasRole}\n` +
-            `❌ Couldn't DM (DMs closed): ${failed}`,
-        });
-        return;
       }
+
+      await interaction.editReply({
+        content: `✅ Region audit complete.\n` +
+          `📨 DMed: ${dmed}\n` +
+          `✔️ Already had a region: ${skippedHasRole}\n` +
+          `❌ Couldn't DM (DMs closed): ${failed}`,
+      });
       return;
     }
 

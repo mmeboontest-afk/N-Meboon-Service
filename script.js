@@ -67,7 +67,7 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   // ---------- press/release feel for touch (mirrors :active for tap devices) ----------
-  document.querySelectorAll('.btn').forEach(btn => {
+  document.querySelectorAll('.link-row').forEach(btn => {
     btn.addEventListener('touchstart', () => btn.classList.add('is-pressed'), { passive: true });
     btn.addEventListener('touchend', () => btn.classList.remove('is-pressed'), { passive: true });
     btn.addEventListener('touchcancel', () => btn.classList.remove('is-pressed'), { passive: true });
@@ -90,22 +90,22 @@ document.addEventListener('DOMContentLoaded', () => {
           return String(n);
         };
 
-        const subEl = ytCard.querySelector('.yt-subs');
+        const subEl = ytCard.querySelector('.stats-subs');
         if (subEl) {
           subEl.textContent = data.subscriberCount != null
-            ? (fmt(data.subscriberCount) + ' ผู้ติดตาม')
-            : 'ผู้ติดตาม (ไม่เปิดเผยจำนวน)';
+            ? (fmt(data.subscriberCount) + ' subscribers')
+            : 'Subscriber count hidden';
         }
 
-        const avatarEl = ytCard.querySelector('.yt-avatar');
+        const avatarEl = ytCard.querySelector('.stats-avatar');
         if (avatarEl && data.channelThumbnail) {
           avatarEl.src = data.channelThumbnail;
         }
 
         if (data.videoId) {
-          const thumbEl = ytCard.querySelector('.yt-video-thumb');
-          const titleEl = ytCard.querySelector('.yt-video-title');
-          const linkEl = ytCard.querySelector('.yt-video-link');
+          const thumbEl = ytCard.querySelector('.stats-video-thumb');
+          const titleEl = ytCard.querySelector('.stats-video-title');
+          const linkEl = ytCard.querySelector('.stats-video');
           if (thumbEl) thumbEl.src = data.videoThumbnail;
           if (titleEl) titleEl.textContent = data.videoTitle;
           if (linkEl) linkEl.href = 'https://www.youtube.com/watch?v=' + data.videoId;

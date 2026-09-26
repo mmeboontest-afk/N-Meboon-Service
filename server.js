@@ -1,12 +1,9 @@
 // Express server for hosting the N'Meboon link site as a Render Web Service.
 //
-// IMPORTANT: this version serves the front-end files straight from the
-// project root (same folder as this file) — index.html, menu.html,
-// style.css, script.js, transition.mp4, transition.webm — because that's
-// how the files actually ended up in the GitHub repo (renaming files into
-// a public/ subfolder isn't possible for videos through the GitHub web
-// editor on mobile). Only these specific files are served, so the bot's
-// source code (server.js, bot.js, otpStore.js, package.json) stays private.
+// Front-end files are served straight from the project root (same folder
+// as this file) — that's how they actually ended up in the GitHub repo.
+// Only the files listed below are ever handed out over HTTP, so the bot's
+// source code (bot.js, otpStore.js, levelSystem.js, etc.) stays private.
 
 const express = require('express');
 const path = require('path');
@@ -14,11 +11,10 @@ const path = require('path');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Only these files are ever handed out — nothing else in the repo root
-// (like bot.js or server.js itself) is reachable over HTTP.
 const FRONTEND_FILES = [
   'index.html',
   'menu.html',
+  'check.html',
   'style.css',
   'script.js',
   'transition.mp4',
@@ -28,7 +24,7 @@ const FRONTEND_FILES = [
 FRONTEND_FILES.forEach((file) => {
   app.get('/' + file, (req, res) => {
     res.sendFile(path.join(__dirname, file), (err) => {
-      if (err) res.status(404).send('Not found');
+      if (err) res.status(404).sendFile(path.join(__dirname, '404.html'));
     });
   });
 });
@@ -37,15 +33,23 @@ app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'index.html'));
 });
 
+// Friendly URL for the status page (no .html needed)
+app.get('/check', (req, res) => {
+  res.sendFile(path.join(__dirname, 'check.html'));
+});
+
 // ---------------------------------------------------------------
 // YouTube Data API v3
 // ---------------------------------------------------------------
 const YT_API_KEY = process.env.YOUTUBE_API_KEY;
 const YT_HANDLE = process.env.YOUTUBE_HANDLE || 'NongMeboon';
 
-// Very small in-memory cache so we don't burn API quota on every visitor.
 let ytCache = { data: null, fetchedAt: 0 };
 const YT_CACHE_MS = 10 * 60 * 1000; // 10 minutes
+
+// Tracked separately from the cache so /api/status can report health even
+// when a cached value is still being served.
+let ytStatus = { ok: null, checkedAt: null, error: null };
 
 async function fetchYoutubeData() {
   if (!YT_API_KEY) {
@@ -57,7 +61,6 @@ async function fetchYoutubeData() {
     return ytCache.data;
   }
 
-  // 1) Resolve the handle to a channel (subscriber count + uploads playlist id)
   const channelUrl = `https://www.googleapis.com/youtube/v3/channels?part=snippet,statistics,contentDetails&forHandle=${encodeURIComponent(YT_HANDLE)}&key=${YT_API_KEY}`;
   const channelRes = await fetch(channelUrl);
   const channelJson = await channelRes.json();
@@ -70,7 +73,6 @@ async function fetchYoutubeData() {
     ? null
     : Number(channel.statistics.subscriberCount);
 
-  // 2) Grab the most recent upload from that channel's uploads playlist
   let latestVideo = null;
   const plUrl = `https://www.googleapis.com/youtube/v3/playlistItems?part=snippet&playlistId=${uploadsPlaylistId}&maxResults=1&key=${YT_API_KEY}`;
   const plRes = await fetch(plUrl);
@@ -99,24 +101,65 @@ async function fetchYoutubeData() {
 app.get('/api/youtube', async (req, res) => {
   try {
     const data = await fetchYoutubeData();
+    ytStatus = { ok: true, checkedAt: Date.now(), error: null };
     res.json(data);
   } catch (err) {
+    ytStatus = { ok: false, checkedAt: Date.now(), error: err.message };
     console.error('YouTube API error:', err.message);
     res.status(502).json({ error: 'youtube_unavailable' });
   }
 });
 
-// Fallback: unknown routes go back to the home page.
-app.get('*', (req, res) => {
-  res.sendFile(path.join(__dirname, 'index.html'));
+// ---------------------------------------------------------------
+// Discord bot (required below) — captured here so /api/status can report
+// whether it's actually connected right now.
+// ---------------------------------------------------------------
+const botClient = require('./bot.js');
+
+// ---------------------------------------------------------------
+// Public status endpoint — no tokens/keys/secrets, just up/down state.
+// ---------------------------------------------------------------
+app.get('/api/status', async (req, res) => {
+  const status = {
+    website: { status: 'ok', detail: 'Serving requests normally' },
+    discordBot: { status: 'down', detail: 'Not connected' },
+    youtubeApi: { status: 'warn', detail: 'Not checked yet' },
+  };
+
+  // Discord bot
+  if (!process.env.MAIN_DISCORD_TOKEN) {
+    status.discordBot = { status: 'warn', detail: 'Bot token not configured' };
+  } else if (botClient && botClient.isReady && botClient.isReady()) {
+    status.discordBot = { status: 'ok', detail: `Connected as ${botClient.user.tag}` };
+  } else {
+    status.discordBot = { status: 'down', detail: 'Bot is not connected right now' };
+  }
+
+  // YouTube integration
+  if (!YT_API_KEY) {
+    status.youtubeApi = { status: 'warn', detail: 'API key not configured' };
+  } else if (ytStatus.ok === true) {
+    status.youtubeApi = { status: 'ok', detail: 'Last check succeeded' };
+  } else if (ytStatus.ok === false) {
+    status.youtubeApi = { status: 'down', detail: 'Last check failed — could not reach YouTube' };
+  } else {
+    // Never checked yet this run — do a live check now so /check isn't stuck on "Not checked yet"
+    try {
+      await fetchYoutubeData();
+      status.youtubeApi = { status: 'ok', detail: 'Last check succeeded' };
+    } catch {
+      status.youtubeApi = { status: 'down', detail: 'Could not reach YouTube' };
+    }
+  }
+
+  res.json(status);
+});
+
+// Fallback: anything else is a genuine 404.
+app.use((req, res) => {
+  res.status(404).sendFile(path.join(__dirname, '404.html'));
 });
 
 app.listen(PORT, () => {
   console.log(`N'Meboon site is running on port ${PORT}`);
 });
-
-// ---------------------------------------------------------------
-// Discord bot (N'Meboon Fan Club) — starts automatically as long as
-// MAIN_DISCORD_TOKEN is set in the environment.
-// ---------------------------------------------------------------
-require('./bot.js');
