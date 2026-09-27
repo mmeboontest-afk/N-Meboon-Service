@@ -21,6 +21,8 @@ const { addXp, getLeaderboard, resetPeriod, getMonthKey, getYearKey, getLastMont
 const { moderateMessage } = require('./moderation');
 const region = require('./region');
 const faqEngine = require('./faqEngine');
+const { MusicPlayer } = require('./musicPlayer');
+const channelGuide = require('./channelGuide');
 
 const ROLES = {
   MANAGEMENT: {
@@ -68,6 +70,18 @@ const VOICE_XP_PER_MINUTE = 10;
 const VOICE_TICK_MS = 60 * 1000;
 const LEADERBOARD_CHECK_MS = 60 * 60 * 1000; // check hourly for month/year rollover
 
+// Music voice channel — bot lives here 24/7, plays crossfaded music from
+// /music whenever at least one human is present.
+const MUSIC_VOICE_CHANNEL_ID = process.env.MUSIC_VOICE_CHANNEL_ID || '1486496068295331932';
+
+// Channels that get auto-reacted to (heart+star, or heart+wow for fan art).
+const AUTO_REACT_CONFIG = {
+  '1358317033812394065': ['❤️', '⭐'],
+  '1484553528533061832': ['❤️', '⭐'],
+  '1358313999560736911': ['❤️', '😮'],
+};
+const REACT_DELAY_MS = 400; // spacing between reactions to stay well under rate limits
+
 if (!TOKEN) {
   console.log('[bot] MAIN_DISCORD_TOKEN not set — Discord bot will not start.');
   module.exports = null;
@@ -83,6 +97,8 @@ const client = new Client({
     GatewayIntentBits.GuildVoiceStates,
   ],
 });
+
+const musicPlayer = new MusicPlayer();
 
 // ---------------------------------------------------------------
 // Slash commands
@@ -164,6 +180,24 @@ function buildInformationButtons() {
     new ButtonBuilder().setCustomId('email_verify').setLabel('Email Verify').setEmoji('📧').setStyle(ButtonStyle.Secondary),
     new ButtonBuilder().setCustomId('verify_enter_otp').setLabel('Enter OTP').setEmoji('🔑').setStyle(ButtonStyle.Primary),
   );
+}
+
+function buildChannelDirectoryEmbed() {
+  const embed = new EmbedBuilder()
+    .setColor(0x37AEFF)
+    .setTitle('🗺️ Channel Guide');
+
+  channelGuide.CHANNEL_GUIDE.forEach((group) => {
+    const value = group.entries
+      .map((e) => `[${e.label}](${channelGuide.link(e.channelId)}) — ${e.desc}`)
+      .join('\n');
+    embed.addFields({ name: group.category, value });
+  });
+
+  const adminMentions = channelGuide.CREDITS.adminIds.map((id) => `<@${id}>`).join(' ');
+  embed.addFields({ name: 'Credits', value: `${channelGuide.CREDITS.music}\nAdmins: ${adminMentions}` });
+
+  return embed;
 }
 
 function buildItsMeRow() {
@@ -371,6 +405,73 @@ async function tickVoiceXp() {
 }
 
 // ---------------------------------------------------------------
+// Auto-react — heart/star (or heart/wow for fan art) on configured channels
+// ---------------------------------------------------------------
+async function reactToMessage(message) {
+  const emojis = AUTO_REACT_CONFIG[message.channel.id];
+  if (!emojis) return;
+  for (const emoji of emojis) {
+    if (message.reactions.cache.has(emoji)) continue; // already reacted (e.g. re-run after restart)
+    await message.react(emoji).catch((err) => console.log('[bot] react failed:', err.message));
+  }
+}
+
+async function backfillReactions(channelId) {
+  const emojis = AUTO_REACT_CONFIG[channelId];
+  if (!emojis) return;
+  const channel = await client.channels.fetch(channelId).catch(() => null);
+  if (!channel) return;
+
+  let before;
+  let totalScanned = 0;
+  console.log(`[bot] Backfilling reactions in #${channel.name || channelId}...`);
+
+  while (true) {
+    const batch = await channel.messages.fetch({ limit: 100, ...(before ? { before } : {}) }).catch(() => null);
+    if (!batch || batch.size === 0) break;
+
+    for (const message of batch.values()) {
+      if (message.author.bot) continue;
+      await reactToMessage(message);
+      await new Promise((r) => setTimeout(r, REACT_DELAY_MS));
+      totalScanned++;
+    }
+
+    before = batch.last().id;
+    if (batch.size < 100) break; // reached the end
+  }
+  console.log(`[bot] Backfill done for #${channel.name || channelId} — scanned ${totalScanned} messages.`);
+}
+
+// ---------------------------------------------------------------
+// Music voice channel — 24/7 presence, auto-mute, crossfaded playback
+// ---------------------------------------------------------------
+async function muteMusicChannelMembers(channel) {
+  for (const member of channel.members.values()) {
+    if (member.user.bot) continue;
+    if (!member.voice.mute) await member.voice.setMute(true).catch(() => {});
+  }
+}
+
+async function setupMusicChannel() {
+  const channel = await client.channels.fetch(MUSIC_VOICE_CHANNEL_ID).catch(() => null);
+  if (!channel) {
+    console.log('[bot] Music voice channel not found — check MUSIC_VOICE_CHANNEL_ID.');
+    return;
+  }
+
+  try {
+    musicPlayer.connect(channel);
+    await muteMusicChannelMembers(channel);
+
+    const humanCount = [...channel.members.values()].filter((m) => !m.user.bot).length;
+    if (humanCount > 0) musicPlayer.start();
+  } catch (err) {
+    console.error('[bot] Failed to set up music channel:', err.message);
+  }
+}
+
+// ---------------------------------------------------------------
 // Event: bot ready
 // ---------------------------------------------------------------
 client.once(Events.ClientReady, async (c) => {
@@ -379,6 +480,38 @@ client.once(Events.ClientReady, async (c) => {
   await checkLeaderboardRollover();
   setInterval(tickVoiceXp, VOICE_TICK_MS);
   setInterval(checkLeaderboardRollover, LEADERBOARD_CHECK_MS);
+
+  await setupMusicChannel();
+
+  // Retroactive reactions — runs once per boot; can take a while on large channels.
+  for (const channelId of Object.keys(AUTO_REACT_CONFIG)) {
+    backfillReactions(channelId).catch((err) => console.error('[bot] Backfill error:', err.message));
+  }
+});
+
+// ---------------------------------------------------------------
+// Event: voice state changes — music channel auto-mute + occupancy
+// ---------------------------------------------------------------
+client.on(Events.VoiceStateUpdate, async (oldState, newState) => {
+  const member = newState.member ?? oldState.member;
+  if (!member || member.user.bot) return;
+
+  const joinedMusic = newState.channelId === MUSIC_VOICE_CHANNEL_ID && oldState.channelId !== MUSIC_VOICE_CHANNEL_ID;
+  const leftMusic = oldState.channelId === MUSIC_VOICE_CHANNEL_ID && newState.channelId !== MUSIC_VOICE_CHANNEL_ID;
+
+  if (joinedMusic) {
+    await member.voice.setMute(true).catch(() => {});
+  } else if (leftMusic) {
+    await member.voice.setMute(false).catch(() => {});
+  }
+
+  if (joinedMusic || leftMusic) {
+    const channel = await client.channels.fetch(MUSIC_VOICE_CHANNEL_ID).catch(() => null);
+    if (!channel) return;
+    const humanCount = [...channel.members.values()].filter((m) => !m.user.bot).length;
+    if (humanCount > 0) musicPlayer.start();
+    else musicPlayer.pause();
+  }
 });
 
 // ---------------------------------------------------------------
@@ -401,6 +534,10 @@ client.on(Events.MessageCreate, async (message) => {
   if (message.author.bot || !message.guild) return;
 
   try {
+    if (AUTO_REACT_CONFIG[message.channel.id]) {
+      await reactToMessage(message);
+    }
+
     const verdict = moderateMessage(message);
 
     if (verdict.action === 'delete_silent') {
@@ -442,7 +579,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
       if (card === 'information') {
         await interaction.reply({
-          embeds: [buildInformationEmbed()],
+          embeds: [buildInformationEmbed(), buildChannelDirectoryEmbed()],
           components: [buildInformationButtons()],
         });
         return;
