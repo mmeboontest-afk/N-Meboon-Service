@@ -454,17 +454,23 @@ async function muteMusicChannelMembers(channel) {
 }
 
 async function setupMusicChannel() {
-  const channel = await client.channels.fetch(MUSIC_VOICE_CHANNEL_ID).catch(() => null);
+  console.log(`[bot] Setting up music channel ${MUSIC_VOICE_CHANNEL_ID}...`);
+  const channel = await client.channels.fetch(MUSIC_VOICE_CHANNEL_ID).catch((err) => {
+    console.error('[bot] Failed to fetch music channel:', err.message);
+    return null;
+  });
   if (!channel) {
-    console.log('[bot] Music voice channel not found — check MUSIC_VOICE_CHANNEL_ID.');
+    console.log('[bot] Music voice channel not found — check MUSIC_VOICE_CHANNEL_ID and that the bot can see it.');
     return;
   }
+  console.log(`[bot] Music channel found: #${channel.name || channel.id}`);
 
   try {
     musicPlayer.connect(channel);
     await muteMusicChannelMembers(channel);
 
     const humanCount = [...channel.members.values()].filter((m) => !m.user.bot).length;
+    console.log(`[bot] ${humanCount} human member(s) currently in the music channel.`);
     if (humanCount > 0) musicPlayer.start();
   } catch (err) {
     console.error('[bot] Failed to set up music channel:', err.message);

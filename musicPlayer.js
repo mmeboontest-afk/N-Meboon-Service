@@ -87,7 +87,11 @@ class MusicPlayer {
     this.isPlaying = false;
     this.shouldPlay = false;
 
+    this.player.on(AudioPlayerStatus.Playing, () => {
+      console.log('[music] Player state: Playing');
+    });
     this.player.on(AudioPlayerStatus.Idle, () => {
+      console.log('[music] Player state: Idle (stream ended)');
       this.isPlaying = false;
       if (this.shouldPlay) this._startStream(); // loop the whole playlist again
     });
@@ -97,6 +101,7 @@ class MusicPlayer {
   }
 
   connect(channel) {
+    console.log(`[music] Joining voice channel ${channel.id} in guild ${channel.guild.id}...`);
     this.connection = joinVoiceChannel({
       channelId: channel.id,
       guildId: channel.guild.id,
@@ -104,6 +109,10 @@ class MusicPlayer {
       selfDeaf: true,
     });
     this.connection.subscribe(this.player);
+
+    Object.values(VoiceConnectionStatus).forEach((status) => {
+      this.connection.on(status, () => console.log(`[music] Voice connection state: ${status}`));
+    });
 
     this.connection.on(VoiceConnectionStatus.Disconnected, async () => {
       try {
@@ -114,6 +123,7 @@ class MusicPlayer {
         // Blip / reconnect handled automatically by discord.js — do nothing.
       } catch {
         // Genuine disconnect — rejoin from scratch to honor "stay forever".
+        console.log('[music] Voice connection dropped — rejoining from scratch.');
         this.reconnect(channel);
       }
     });
@@ -131,30 +141,50 @@ class MusicPlayer {
       this.ffmpegProcess = null;
     }
     const files = getPlaylist();
+    console.log(`[music] Playlist has ${files.length} track(s):`, files.map((f) => path.basename(f)));
     if (files.length === 0) {
-      console.log('[music] No audio files found in /music — nothing to play.');
+      console.log('[music] No "music-*" audio files found at the project root — nothing to play. ' +
+        'Add files like music-01-song.mp3 to the repo root.');
       return;
     }
 
     const args = buildFfmpegArgs(files);
+    console.log('[music] Spawning ffmpeg:', ffmpegPath);
     this.ffmpegProcess = spawn(ffmpegPath, args, { stdio: ['ignore', 'pipe', 'pipe'] });
+
     this.ffmpegProcess.on('error', (err) => console.error('[music] ffmpeg failed to start:', err.message));
-    // Uncomment while debugging audio issues:
-    // this.ffmpegProcess.stderr.on('data', (d) => console.log('[ffmpeg]', d.toString()));
+    this.ffmpegProcess.on('exit', (code, signal) => {
+      if (code !== null && code !== 0) console.error(`[music] ffmpeg exited with code ${code}`);
+    });
+
+    let stderrBuffer = '';
+    this.ffmpegProcess.stderr.on('data', (d) => {
+      stderrBuffer += d.toString();
+      // Keep only the tail so this can't grow unbounded over a long-running stream.
+      if (stderrBuffer.length > 4000) stderrBuffer = stderrBuffer.slice(-4000);
+    });
+    this.ffmpegProcess.on('exit', (code) => {
+      if (code !== null && code !== 0 && stderrBuffer) {
+        console.error('[music] ffmpeg stderr (tail):\n' + stderrBuffer.slice(-1000));
+      }
+    });
 
     const resource = createAudioResource(this.ffmpegProcess.stdout, { inputType: StreamType.Raw });
     this.player.play(resource);
     this.isPlaying = true;
+    console.log('[music] player.play() called.');
   }
 
   /** Start (or resume) playback — safe to call repeatedly; won't restart an already-playing stream. */
   start() {
+    console.log(`[music] start() called (currently playing: ${this.isPlaying})`);
     this.shouldPlay = true;
     if (!this.isPlaying) this._startStream();
   }
 
   /** Pause playback (bot stays connected to the channel). */
   pause() {
+    console.log('[music] pause() called');
     this.shouldPlay = false;
     if (this.ffmpegProcess) { this.ffmpegProcess.kill('SIGKILL'); this.ffmpegProcess = null; }
     this.player.stop();

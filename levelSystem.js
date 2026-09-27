@@ -6,17 +6,26 @@ const DATA_FILE = path.join(__dirname, 'data', 'levels.json');
 // ---------------------------------------------------------------
 // Minecraft's real XP-per-level curve (total XP needed to REACH a level).
 // Growth is quadratic, so higher levels get noticeably harder — same
-// feel as Minecraft. Tweak XP_SCALE below if leveling feels too
-// slow/fast for a chat-based server; it divides every threshold.
+// feel as Minecraft.
+//
+// The raw Minecraft numbers assume XP comes in big chunks (killing mobs,
+// mining, etc.) — way more per action than "1 XP per chat message" here,
+// so leveling felt way too fast using them directly. LEVEL_XP_MULTIPLIER
+// scales every threshold up to compensate. Adjust anytime via the
+// LEVEL_XP_MULTIPLIER environment variable on Render — no code change or
+// redeploy needed, just update the env var and restart the service.
+//   e.g. 1  = raw Minecraft numbers (very fast for chat XP)
+//        6  = default — level 10 needs ~960 messages instead of 160
+//        12 = twice as slow as the default
 // ---------------------------------------------------------------
-const XP_SCALE = 1; // e.g. set to 2 to make every level cost half as much
+const LEVEL_XP_MULTIPLIER = Number(process.env.LEVEL_XP_MULTIPLIER) || 6;
 
 function totalXpForLevel(level) {
   let xp;
   if (level <= 15) xp = level * level + 6 * level;
   else if (level <= 30) xp = 2.5 * level * level - 40.5 * level + 360;
   else xp = 4.5 * level * level - 162.5 * level + 2220;
-  return Math.round(xp / XP_SCALE);
+  return Math.round(xp * LEVEL_XP_MULTIPLIER);
 }
 
 function levelForTotalXp(totalXp) {
