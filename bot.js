@@ -343,7 +343,7 @@ async function announceLevelUp(userId, newLevel) {
 }
 
 async function handleXpGain(member, amount) {
-  const result = addXp(member.id, amount);
+  const result = await addXp(member.id, amount);
   if (result.leveledUp) {
     await announceLevelUp(member.id, result.newLevel);
     await syncNicknameLevel(member, result.newLevel);
@@ -351,7 +351,7 @@ async function handleXpGain(member, amount) {
 }
 
 async function postLeaderboard(period, title) {
-  const top = getLeaderboard(period, 50);
+  const top = await getLeaderboard(period, 50);
   if (top.length === 0) return; // nobody earned XP this period — nothing to show
 
   const lines = top.map((entry, i) => `[${i + 1}] <@${entry.userId}> Level ${entry.level} XP ${entry.xp}`);
@@ -373,22 +373,22 @@ async function checkLeaderboardRollover() {
   const monthKey = getMonthKey(now);
   const yearKey = getYearKey(now);
 
-  const lastMonth = getLastMonthKey();
+  const lastMonth = await getLastMonthKey();
   if (lastMonth === null) {
-    setLastMonthKey(monthKey); // first boot — just record baseline, don't announce
+    await setLastMonthKey(monthKey); // first boot — just record baseline, don't announce
   } else if (lastMonth !== monthKey) {
     await postLeaderboard('monthlyXp', '🏆 Monthly Top 50 — XP Leaderboard');
-    resetPeriod('monthlyXp');
-    setLastMonthKey(monthKey);
+    await resetPeriod('monthlyXp');
+    await setLastMonthKey(monthKey);
   }
 
-  const lastYear = getLastYearKey();
+  const lastYear = await getLastYearKey();
   if (lastYear === null) {
-    setLastYearKey(yearKey);
+    await setLastYearKey(yearKey);
   } else if (lastYear !== yearKey) {
     await postLeaderboard('yearlyXp', '🎉 Yearly Top 50 — XP Leaderboard');
-    resetPeriod('yearlyXp');
-    setLastYearKey(yearKey);
+    await resetPeriod('yearlyXp');
+    await setLastYearKey(yearKey);
   }
 }
 
@@ -466,6 +466,19 @@ async function setupMusicChannel() {
   console.log(`[bot] Music channel found: #${channel.name || channel.id}`);
 
   try {
+    // Permission diagnostics — the #1 reason a bot joins but stays silent.
+    const me = channel.guild.members.me;
+    const perms = me ? channel.permissionsFor(me) : null;
+    if (perms) {
+      const need = { ViewChannel: 'View Channel', Connect: 'Connect', Speak: 'Speak' };
+      const missing = Object.entries(need).filter(([flag]) => !perms.has(PermissionsBitField.Flags[flag])).map(([, label]) => label);
+      if (missing.length) {
+        console.error(`[bot] ⚠️ Bot is MISSING permissions in the music channel: ${missing.join(', ')} — it cannot play music until these are granted (check the channel's permission overrides too, not just the role).`);
+      } else {
+        console.log('[bot] Music channel permissions OK (View Channel, Connect, Speak).');
+      }
+    }
+
     musicPlayer.connect(channel);
     await muteMusicChannelMembers(channel);
 
@@ -499,6 +512,13 @@ client.once(Events.ClientReady, async (c) => {
 // Event: voice state changes — music channel auto-mute + occupancy
 // ---------------------------------------------------------------
 client.on(Events.VoiceStateUpdate, async (oldState, newState) => {
+  // If somebody (or another bot) server-mutes THIS bot, unmute itself so the music can be heard.
+  if (newState.id === client.user.id && newState.serverMute) {
+    console.log('[bot] Bot was server-muted — unmuting itself.');
+    await newState.setMute(false).catch((err) => console.error('[bot] Could not unmute itself (needs Mute Members permission):', err.message));
+    return;
+  }
+
   const member = newState.member ?? oldState.member;
   if (!member || member.user.bot) return;
 
@@ -853,4 +873,5 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
 client.login(TOKEN);
 
+client.musicPlayer = musicPlayer; // exposed so /status can report music health
 module.exports = client;

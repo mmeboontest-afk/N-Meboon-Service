@@ -1,7 +1,4 @@
-const fs = require('fs');
-const path = require('path');
-
-const DATA_FILE = path.join(__dirname, 'data', 'levels.json');
+const storage = require('./storage');
 
 // ---------------------------------------------------------------
 // Minecraft's real XP-per-level curve (total XP needed to REACH a level).
@@ -35,43 +32,49 @@ function levelForTotalXp(totalXp) {
 }
 
 // ---------------------------------------------------------------
-// Storage — plain JSON file. See the note in bot.js / README about
-// this resetting on Render's free plan (ephemeral filesystem).
+// In-memory cache, loaded once (lazily) from storage.js and kept in sync.
 // ---------------------------------------------------------------
-function loadData() {
-  try {
-    const raw = fs.readFileSync(DATA_FILE, 'utf8');
-    return JSON.parse(raw);
-  } catch {
-    return { users: {}, lastMonthKey: null, lastYearKey: null };
+let data = null;
+let loadingPromise = null;
+
+async function ensureLoaded() {
+  if (data) return data;
+  if (!loadingPromise) {
+    loadingPromise = storage.loadData().then((d) => { data = d; return d; });
   }
+  return loadingPromise;
 }
 
-function saveData(data) {
-  try {
-    fs.mkdirSync(path.dirname(DATA_FILE), { recursive: true });
-    fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
-  } catch (err) {
-    console.error('[levelSystem] Failed to save data:', err.message);
-  }
-}
-
-let data = loadData();
-
-function getUser(userId) {
+async function getUser(userId) {
+  await ensureLoaded();
   if (!data.users[userId]) {
     data.users[userId] = { totalXp: 0, monthlyXp: 0, yearlyXp: 0, level: 0 };
   }
   return data.users[userId];
 }
 
+/** Read-only lookup — returns null (and does NOT create a record) if the user never earned XP. */
+async function peekUser(userId) {
+  await ensureLoaded();
+  const u = data.users[userId];
+  return u ? { ...u } : null;
+}
+
+/** 1-based rank of a user for a period ('monthlyXp' | 'yearlyXp' | 'totalXp'), or null if unranked. */
+async function getRank(userId, period = 'totalXp') {
+  await ensureLoaded();
+  const me = data.users[userId];
+  if (!me || !(me[period] > 0)) return null;
+  const ahead = Object.values(data.users).filter((u) => (u[period] || 0) > me[period]).length;
+  return ahead + 1;
+}
+
 /**
  * Adds XP to a user and persists it.
- * Returns { leveledUp, oldLevel, newLevel, totalXp } so the caller can
- * decide whether to announce a level-up.
+ * Returns { leveledUp, oldLevel, newLevel, totalXp }.
  */
-function addXp(userId, amount) {
-  const user = getUser(userId);
+async function addXp(userId, amount) {
+  const user = await getUser(userId);
   const oldLevel = user.level;
 
   user.totalXp += amount;
@@ -79,7 +82,7 @@ function addXp(userId, amount) {
   user.yearlyXp += amount;
   user.level = levelForTotalXp(user.totalXp);
 
-  saveData(data);
+  await storage.saveData(data);
 
   return {
     leveledUp: user.level > oldLevel,
@@ -91,10 +94,10 @@ function addXp(userId, amount) {
 
 /**
  * Top N users for a period ('monthlyXp' or 'yearlyXp'), highest first.
- * Only users with XP > 0 in that period are included — no padding with
- * empty ranks if fewer than N users qualify.
+ * Only users with XP > 0 in that period are included.
  */
-function getLeaderboard(period, limit = 50) {
+async function getLeaderboard(period, limit = 50) {
+  await ensureLoaded();
   return Object.entries(data.users)
     .map(([userId, u]) => ({ userId, xp: u[period] || 0, level: u.level }))
     .filter((u) => u.xp > 0)
@@ -102,22 +105,25 @@ function getLeaderboard(period, limit = 50) {
     .slice(0, limit);
 }
 
-function resetPeriod(period) {
+async function resetPeriod(period) {
+  await ensureLoaded();
   Object.values(data.users).forEach((u) => { u[period] = 0; });
-  saveData(data);
+  await storage.saveData(data);
 }
 
 function getMonthKey(date) { return `${date.getFullYear()}-${date.getMonth()}`; }
 function getYearKey(date) { return `${date.getFullYear()}`; }
 
-function getLastMonthKey() { return data.lastMonthKey; }
-function setLastMonthKey(key) { data.lastMonthKey = key; saveData(data); }
-function getLastYearKey() { return data.lastYearKey; }
-function setLastYearKey(key) { data.lastYearKey = key; saveData(data); }
+async function getLastMonthKey() { await ensureLoaded(); return data.lastMonthKey; }
+async function setLastMonthKey(key) { await ensureLoaded(); data.lastMonthKey = key; await storage.saveData(data); }
+async function getLastYearKey() { await ensureLoaded(); return data.lastYearKey; }
+async function setLastYearKey(key) { await ensureLoaded(); data.lastYearKey = key; await storage.saveData(data); }
 
 module.exports = {
   addXp,
   getUser,
+  peekUser,
+  getRank,
   getLeaderboard,
   resetPeriod,
   getMonthKey,

@@ -21,6 +21,7 @@ const {
   AudioPlayerStatus,
   VoiceConnectionStatus,
   entersState,
+  generateDependencyReport,
 } = require('@discordjs/voice');
 
 // Music files live directly in the project root (same folder as this file)
@@ -101,6 +102,10 @@ class MusicPlayer {
   }
 
   connect(channel) {
+    // Prints which voice libraries are actually installed (opus, encryption,
+    // DAVE, ffmpeg). Since March 2026 Discord requires the DAVE protocol —
+    // if "@snazzah/davey" shows "not found" below, voice will silently fail.
+    try { console.log('[music] Voice dependency report:\n' + generateDependencyReport()); } catch {}
     console.log(`[music] Joining voice channel ${channel.id} in guild ${channel.guild.id}...`);
     this.connection = joinVoiceChannel({
       channelId: channel.id,
@@ -110,6 +115,7 @@ class MusicPlayer {
     });
     this.connection.subscribe(this.player);
 
+    this.connection.on('error', (err) => console.error('[music] Voice connection error:', err.message));
     Object.values(VoiceConnectionStatus).forEach((status) => {
       this.connection.on(status, () => console.log(`[music] Voice connection state: ${status}`));
     });
@@ -173,6 +179,15 @@ class MusicPlayer {
     this.player.play(resource);
     this.isPlaying = true;
     console.log('[music] player.play() called.');
+  }
+
+  /** Snapshot for the /status page — no secrets. */
+  getStatus() {
+    return {
+      connection: this.connection ? this.connection.state.status : 'not_joined',
+      playing: this.isPlaying,
+      tracks: getPlaylist().length,
+    };
   }
 
   /** Start (or resume) playback — safe to call repeatedly; won't restart an already-playing stream. */

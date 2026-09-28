@@ -7,6 +7,9 @@
 
 const express = require('express');
 const path = require('path');
+const auth = require('./auth');
+const storage = require('./storage');
+const levels = require('./levelSystem');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -14,7 +17,7 @@ const PORT = process.env.PORT || 3000;
 const FRONTEND_FILES = [
   'index.html',
   'menu.html',
-  'check.html',
+  'status.html',
   'style.css',
   'script.js',
   'transition.mp4',
@@ -33,9 +36,64 @@ app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'index.html'));
 });
 
-// Friendly URL for the status page (no .html needed)
-app.get('/check', (req, res) => {
-  res.sendFile(path.join(__dirname, 'check.html'));
+// Friendly URLs (no .html needed)
+app.get('/status', (req, res) => {
+  res.sendFile(path.join(__dirname, 'status.html'));
+});
+app.get('/check', (req, res) => { // old link — keep working
+  res.statusCode = 301;
+  res.setHeader('Location', '/status');
+  res.end();
+});
+
+// ---------------------------------------------------------------
+// Discord login + profile
+// ---------------------------------------------------------------
+function queryOf(req) {
+  return Object.fromEntries(new URL(req.url, 'http://x').searchParams);
+}
+
+app.get('/login', (req, res) => {
+  if (auth.getSession(req)) { res.statusCode = 302; res.setHeader('Location', '/main'); return res.end(); }
+  res.sendFile(path.join(__dirname, 'login.html'));
+});
+app.get('/Login', (req, res) => { // the Verify link in the Discord info card uses /Login
+  res.statusCode = 302; res.setHeader('Location', '/login'); res.end();
+});
+app.get('/auth/discord', (req, res) => auth.startLogin(req, res));
+app.get('/auth/discord/callback', (req, res) => auth.handleCallback(req, res, queryOf(req)));
+app.get('/logout', (req, res) => auth.logout(req, res));
+
+app.get('/main', (req, res) => {
+  if (!auth.getSession(req)) { res.statusCode = 302; res.setHeader('Location', '/login'); return res.end(); }
+  res.sendFile(path.join(__dirname, 'main.html'));
+});
+
+app.get('/api/me', async (req, res) => {
+  const session = auth.getSession(req);
+  if (!session) return res.status(401).json({ error: 'not_logged_in' });
+
+  const u = await levels.peekUser(session.id); // read-only: visiting never creates a record
+  const level = u ? u.level : 0;
+  const totalXp = u ? u.totalXp : 0;
+  const base = levels.totalXpForLevel(level);
+  const next = levels.totalXpForLevel(level + 1);
+  res.setHeader('Cache-Control', 'no-store');
+  res.json({
+    id: session.id,
+    username: session.username,
+    displayName: session.globalName || session.username,
+    avatarUrl: auth.avatarUrl(session),
+    hasXp: !!u,
+    level,
+    totalXp,
+    monthlyXp: u ? u.monthlyXp : 0,
+    yearlyXp: u ? u.yearlyXp : 0,
+    xpIntoLevel: totalXp - base,
+    xpForNext: next - base,
+    progress: next > base ? Math.min(1, Math.max(0, (totalXp - base) / (next - base))) : 0,
+    monthlyRank: await levels.getRank(session.id, 'monthlyXp'),
+  });
 });
 
 // ---------------------------------------------------------------
@@ -135,6 +193,24 @@ app.get('/api/status', async (req, res) => {
     status.discordBot = { status: 'down', detail: 'Bot is not connected right now' };
   }
 
+  // Music channel
+  if (botClient && botClient.musicPlayer) {
+    const m = botClient.musicPlayer.getStatus();
+    if (m.tracks === 0) status.music = { status: 'warn', detail: 'No music-*.mp3 files found in the project root' };
+    else if (m.connection === 'ready') status.music = { status: 'ok', detail: `In the voice channel · ${m.tracks} tracks · ${m.playing ? 'playing now' : 'waiting for listeners'}` };
+    else status.music = { status: 'down', detail: `Voice connection: ${m.connection} — check Render logs (DAVE / permissions)` };
+  }
+
+  // Database (level persistence)
+  status.database = storage.usingMongo()
+    ? { status: 'ok', detail: 'MongoDB — level data is permanent (survives redeploys)' }
+    : { status: 'warn', detail: 'File storage — level data resets on every redeploy. Set MONGODB_URI to fix.' };
+
+  // Discord login
+  status.discordLogin = auth.isConfigured()
+    ? { status: 'ok', detail: 'Discord OAuth is configured' }
+    : { status: 'warn', detail: 'Not configured (missing client secret)' };
+
   // YouTube integration
   if (!YT_API_KEY) {
     status.youtubeApi = { status: 'warn', detail: 'API key not configured' };
@@ -143,7 +219,7 @@ app.get('/api/status', async (req, res) => {
   } else if (ytStatus.ok === false) {
     status.youtubeApi = { status: 'down', detail: 'Last check failed — could not reach YouTube' };
   } else {
-    // Never checked yet this run — do a live check now so /check isn't stuck on "Not checked yet"
+    // Never checked yet this run — do a live check now so /status isn't stuck on "Not checked yet"
     try {
       await fetchYoutubeData();
       status.youtubeApi = { status: 'ok', detail: 'Last check succeeded' };
@@ -152,6 +228,15 @@ app.get('/api/status', async (req, res) => {
     }
   }
 
+  status.features = [
+    { name: 'Level & XP', detail: 'Minecraft-style curve · 1 XP/message · 10 XP/min in voice' },
+    { name: 'Auto-moderation', detail: 'Links/GIFs auto-deleted · spam, mass-ping & NSFW warnings' },
+    { name: 'Verification', detail: 'DM one-time code (OTP) → Verified role' },
+    { name: 'Music channel', detail: '24/7 voice presence · 3s crossfade between tracks' },
+    { name: 'Region roles', detail: 'Continent & country picker' },
+    { name: 'Feedback & Q&A', detail: 'Feedback, bug reports, 5-min FAQ helper channel' },
+    { name: 'Website login', detail: 'Discord-only · stateless signed-cookie sessions' },
+  ];
   res.json(status);
 });
 

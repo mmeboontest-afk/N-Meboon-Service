@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>My Profile — N'Meboon</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<main class="page">
+
+  <section class="hero profile-hero">
+    <img id="p-avatar" class="profile-avatar" src="" alt="">
+    <h1 class="hero-name" id="p-name">Loading…</h1>
+    <p class="hero-tagline" id="p-handle"></p>
+    <div class="level-badge" id="p-level">Lv —</div>
+  </section>
+
+  <div class="stats-card loaded profile-stats">
+    <div class="xp-row">
+      <span id="p-xp-text">XP —</span>
+      <span id="p-xp-next"></span>
+    </div>
+    <div class="xp-bar"><div class="xp-fill" id="p-xp-fill" style="width:0%"></div></div>
+  </div>
+
+  <h2 class="section-label">Stats</h2>
+  <div class="stat-grid">
+    <div class="stat-tile"><div class="stat-num" id="s-total">—</div><div class="stat-label">Total XP</div></div>
+    <div class="stat-tile"><div class="stat-num" id="s-month">—</div><div class="stat-label">This month</div></div>
+    <div class="stat-tile"><div class="stat-num" id="s-year">—</div><div class="stat-label">This year</div></div>
+    <div class="stat-tile"><div class="stat-num" id="s-rank">—</div><div class="stat-label">Monthly rank</div></div>
+  </div>
+
+  <p id="p-empty" class="profile-empty" style="display:none">
+    You haven't earned any XP yet — chat or hop into a voice channel in the Discord server to get started!
+  </p>
+
+  <div class="link-list" style="margin-top:18px">
+    <a class="link-row" href="/"><span class="link-text"><span class="link-title">Home</span><span class="link-sub">All links</span></span><span class="link-chevron">›</span></a>
+    <a class="link-row" href="/logout"><span class="link-text"><span class="link-title">Log out</span><span class="link-sub">Sign out of this browser</span></span><span class="link-chevron">›</span></a>
+  </div>
+
+  <footer class="made-by">N'Meboon · Fan Club</footer>
+</main>
+
+<script>
+const fmt = (n) => Number(n).toLocaleString();
+fetch('/api/me', { cache: 'no-store' })
+  .then((r) => { if (r.status === 401) { location.href = '/login'; throw 0; } return r.json(); })
+  .then((d) => {
+    document.getElementById('p-avatar').src = d.avatarUrl;
+    document.getElementById('p-name').textContent = d.displayName;
+    document.getElementById('p-handle').textContent = '@' + d.username;
+    document.getElementById('p-level').textContent = 'Lv ' + d.level;
+    document.getElementById('p-xp-text').textContent = fmt(d.xpIntoLevel) + ' / ' + fmt(d.xpForNext) + ' XP';
+    document.getElementById('p-xp-next').textContent = 'to Lv ' + (d.level + 1);
+    document.getElementById('p-xp-fill').style.width = Math.round(d.progress * 100) + '%';
+    document.getElementById('s-total').textContent = fmt(d.totalXp);
+    document.getElementById('s-month').textContent = fmt(d.monthlyXp);
+    document.getElementById('s-year').textContent = fmt(d.yearlyXp);
+    document.getElementById('s-rank').textContent = d.monthlyRank ? '#' + d.monthlyRank : '—';
+    if (!d.hasXp) document.getElementById('p-empty').style.display = 'block';
+  })
+  .catch(() => {});
+</script>
+</body>
+</html>

@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>System Status — N'Meboon</title>
+<meta name="description" content="Live status of N'Meboon's website, Discord bot, and YouTube integration">
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<main class="status-page">
+  <div class="status-header">
+    <h1>System Status</h1>
+    <p>System health &amp; features — refreshes automatically every 30 seconds</p>
+  </div>
+
+  <div id="status-list"></div>
+
+  <h2 class="section-label" style="margin:26px 0 10px">Features</h2>
+  <div id="feature-list"></div>
+
+  <div class="status-updated" id="status-updated"></div>
+</main>
+
+<script>
+const STATUS_META = {
+  ok:   { cls: 'ok',   label: 'Operational' },
+  warn: { cls: 'warn', label: 'Needs setup' },
+  down: { cls: 'down', label: 'Unreachable' },
+};
+const NAMES = {
+  website: 'Website',
+  discordBot: 'Discord Bot',
+  music: 'Music Channel',
+  database: 'Database (levels)',
+  discordLogin: 'Discord Login',
+  youtubeApi: 'YouTube Integration',
+};
+const ORDER = ['website', 'discordBot', 'music', 'database', 'discordLogin', 'youtubeApi'];
+
+function esc(t) { const d = document.createElement('div'); d.textContent = t == null ? '' : t; return d.innerHTML; }
+
+function render(data) {
+  const list = document.getElementById('status-list');
+  list.innerHTML = ORDER.filter((k) => data[k]).map((k) => {
+    const r = data[k];
+    const m = STATUS_META[r.status] || STATUS_META.down;
+    return `<div class="status-row">
+      <span class="status-dot ${m.cls}"></span>
+      <div class="status-body"><div class="status-name">${esc(NAMES[k] || k)}</div><div class="status-detail">${esc(r.detail)}</div></div>
+      <span class="status-badge ${m.cls}">${m.label}</span>
+    </div>`;
+  }).join('');
+
+  document.getElementById('feature-list').innerHTML = (data.features || []).map((f) =>
+    `<div class="status-row"><span class="status-dot ok"></span>
+      <div class="status-body"><div class="status-name">${esc(f.name)}</div><div class="status-detail">${esc(f.detail)}</div></div></div>`
+  ).join('');
+}
+
+async function refreshStatus() {
+  try {
+    const res = await fetch('/api/status', { cache: 'no-store' });
+    render(await res.json());
+    document.getElementById('status-updated').textContent = 'Last checked: ' + new Date().toLocaleTimeString();
+  } catch (err) {
+    render({ website: { status: 'down', detail: 'Could not reach the status API' } });
+  }
+}
+refreshStatus();
+setInterval(refreshStatus, 30000);
+</script>
+</body>
+</html>
