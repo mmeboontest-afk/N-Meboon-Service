@@ -1,22 +1,15 @@
 {
-  "name": "nmeboon-website",
+  "name": "nmeboon-mc-bot",
   "version": "1.0.0",
-  "description": "N'Meboon link site (Render Web Service)",
+  "description": "Minecraft Mineflayer bot with web control panel + Discord-file memory",
   "main": "server.js",
-  "scripts": {
-    "start": "node server.js"
-  },
-  "engines": {
-    "node": ">=18"
-  },
+  "scripts": { "start": "node server.js" },
+  "engines": { "node": ">=18" },
   "dependencies": {
     "express": "^4.19.2",
-    "discord.js": "^14.15.3",
-    "@discordjs/voice": "^0.19.2",
-    "@snazzah/davey": "^0.1.10",
-    "ffmpeg-static": "^5.2.0",
-    "opusscript": "^0.0.8",
-    "libsodium-wrappers": "^0.7.13",
-    "mongodb": "^6.9.0"
+    "mineflayer": "^4.25.0",
+    "mineflayer-pathfinder": "^2.4.5",
+    "mineflayer-collectblock": "^1.4.1",
+    "mineflayer-tool": "^1.2.0"
   }
 }
