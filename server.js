@@ -8,7 +8,7 @@ const PORT = process.env.PORT || 3000;
 
 app.get('/', (req, res) => res.redirect('/ai-control'));
 app.get('/ai-control', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'ai-control.html'));
+  res.sendFile(path.join(__dirname, 'ai-control.html'));
 });
 
 app.get('/api/status', (req, res) => {

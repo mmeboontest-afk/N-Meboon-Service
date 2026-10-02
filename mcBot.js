@@ -6,10 +6,10 @@
 const mineflayer = require('mineflayer');
 const { pathfinder } = require('mineflayer-pathfinder');
 const memory = require('./memory');
-const custom1Runner = require('./modes/custom1Runner');
-const survival = require('./modes/survival');
-const pvp = require('./modes/pvp');
-const farming = require('./modes/farming');
+const custom1Runner = require('./mode-custom1-runner');
+const survival = require('./mode-survival');
+const pvp = require('./mode-pvp');
+const farming = require('./mode-farming');
 
 const MODE_RUNNERS = {
   custom1: (bot, ctx) => custom1Runner.startCustom1(bot, ctx),
