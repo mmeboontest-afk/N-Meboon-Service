@@ -35,6 +35,7 @@ function serializeMemory(state) {
   lines.push(`server_host: ${state.serverHost || ''}`);
   lines.push(`server_port: ${state.serverPort || ''}`);
   lines.push(`stage: ${state.stage || ''}`); // e.g. traveling, gathering, hunting, defending
+  lines.push(`has_registered: ${state.hasRegistered ? 'true' : 'false'}`);
   lines.push(`last_death_position: ${state.lastDeathPosition ? JSON.stringify(state.lastDeathPosition) : ''}`);
   lines.push(`inventory_snapshot: ${state.inventorySnapshot ? JSON.stringify(state.inventorySnapshot) : ''}`);
   lines.push(`stats: ${JSON.stringify(state.stats || {})}`);
@@ -60,6 +61,7 @@ function parseMemory(text) {
       case 'server_host': state.serverHost = value; break;
       case 'server_port': state.serverPort = value; break;
       case 'stage': state.stage = value; break;
+      case 'has_registered': state.hasRegistered = value === 'true'; break;
       case 'last_death_position': state.lastDeathPosition = value ? JSON.parse(value) : null; break;
       case 'inventory_snapshot': state.inventorySnapshot = value ? JSON.parse(value) : null; break;
       case 'stats': state.stats = value ? JSON.parse(value) : {}; break;
@@ -90,24 +92,29 @@ async function saveMemory(state) {
 async function loadMemory() {
   if (!TOKEN) { console.log('[memory] MAIN_DISCORD_TOKEN not set — cannot load.'); return null; }
 
-  const res = await fetch(`${DISCORD_API}/channels/${MEMORY_CHANNEL_ID}/messages?limit=50`, {
-    headers: authHeaders(),
-  });
-  if (!res.ok) {
-    console.error('[memory] Failed to list messages:', res.status);
+  try {
+    const res = await fetch(`${DISCORD_API}/channels/${MEMORY_CHANNEL_ID}/messages?limit=50`, {
+      headers: authHeaders(),
+    });
+    if (!res.ok) {
+      console.error('[memory] Failed to list messages:', res.status);
+      return null;
+    }
+    const messages = await res.json();
+    for (const msg of messages) {
+      const attachment = (msg.attachments || []).find((a) => a.filename === 'memory.txt');
+      if (attachment) {
+        const fileRes = await fetch(attachment.url);
+        if (!fileRes.ok) continue;
+        const text = await fileRes.text();
+        return parseMemory(text);
+      }
+    }
+    return null; // no memory.txt found anywhere in recent history — start fresh
+  } catch (err) {
+    console.error('[memory] Network error while loading memory (starting fresh instead of crashing):', err.message);
     return null;
   }
-  const messages = await res.json();
-  for (const msg of messages) {
-    const attachment = (msg.attachments || []).find((a) => a.filename === 'memory.txt');
-    if (attachment) {
-      const fileRes = await fetch(attachment.url);
-      if (!fileRes.ok) continue;
-      const text = await fileRes.text();
-      return parseMemory(text);
-    }
-  }
-  return null; // no memory.txt found anywhere in recent history — start fresh
 }
 
 module.exports = { saveMemory, loadMemory, serializeMemory, parseMemory };

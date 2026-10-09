@@ -29,6 +29,14 @@
 <div class="wrap">
   <h1>🎮 AI Control — Minecraft Bot</h1>
 
+  <div class="card" id="pin-gate" style="display:none">
+    <h3>🔒 Enter PIN</h3>
+    <input id="pin-input" type="password" placeholder="PIN" autocomplete="off">
+    <button class="btn-primary" onclick="submitPin()">Unlock</button>
+    <div id="pin-msg" class="msg"></div>
+  </div>
+
+  <div id="panel" style="display:none">
   <div class="card">
     <h3>1. Configure (required before the bot can connect)</h3>
     <div class="row">
@@ -44,6 +52,22 @@
       <option value="pvp">PVP (coming soon)</option>
       <option value="farming">Farming (coming soon)</option>
     </select>
+
+    <label style="margin-top:18px"><input type="checkbox" id="authEnabled" style="width:auto; vertical-align:middle"> This server requires /register or /login on join</label>
+    <div id="auth-fields" style="display:none">
+      <label>Password</label>
+      <input id="authPassword" type="password" placeholder="Server login password" autocomplete="off">
+      <label>Register Command <span style="font-weight:400; color:var(--muted)">(sent only the very first time)</span></label>
+      <input id="registerCommand" value="/register {password} {password}">
+      <label>Login Command <span style="font-weight:400; color:var(--muted)">(sent every time after that)</span></label>
+      <input id="loginCommand" value="/login {password}">
+    </div>
+    <script>
+      document.getElementById('authEnabled').addEventListener('change', (e) => {
+        document.getElementById('auth-fields').style.display = e.target.checked ? 'block' : 'none';
+      });
+    </script>
+
     <button class="btn-primary" onclick="saveConfig()">Save Config</button>
     <div id="config-msg" class="msg"></div>
   </div>
@@ -61,13 +85,39 @@
     <p id="detail"></p>
     <pre id="logs">Loading…</pre>
   </div>
+  </div>
 </div>
 
 <script>
 async function api(path, opts) {
   const res = await fetch(path, Object.assign({ headers: { 'Content-Type': 'application/json' } }, opts));
+  if (res.status === 401) { showGate('Session expired — enter the PIN again.'); throw new Error('not_authed'); }
   return res.json();
 }
+
+function showGate(msg) {
+  document.getElementById('pin-gate').style.display = 'block';
+  document.getElementById('panel').style.display = 'none';
+  if (msg) document.getElementById('pin-msg').textContent = msg;
+}
+function showPanel() {
+  document.getElementById('pin-gate').style.display = 'none';
+  document.getElementById('panel').style.display = 'block';
+  refresh();
+  setInterval(refresh, 3000);
+}
+
+async function submitPin() {
+  const pin = document.getElementById('pin-input').value;
+  const res = await fetch('/api/login', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ pin }) });
+  const r = await res.json();
+  if (r.ok) { showPanel(); } else { document.getElementById('pin-msg').textContent = '❌ ' + r.error; }
+}
+
+(async function init() {
+  const res = await fetch('/api/status');
+  if (res.status === 401) showGate(); else showPanel();
+})();
 
 async function saveConfig() {
   const body = {
@@ -75,6 +125,10 @@ async function saveConfig() {
     port: document.getElementById('port').value.trim(),
     botName: document.getElementById('botName').value.trim(),
     mode: document.getElementById('mode').value,
+    authEnabled: document.getElementById('authEnabled').checked,
+    authPassword: document.getElementById('authPassword').value,
+    registerCommand: document.getElementById('registerCommand').value,
+    loginCommand: document.getElementById('loginCommand').value,
   };
   const r = await api('/api/config', { method: 'POST', body: JSON.stringify(body) });
   document.getElementById('config-msg').textContent = r.ok ? '✅ Saved — you can Start now.' : '❌ ' + r.error;
@@ -104,8 +158,6 @@ async function refresh() {
     (s.position ? ` · pos: ${Math.round(s.position.x)},${Math.round(s.position.y)},${Math.round(s.position.z)}` : '');
   document.getElementById('logs').textContent = (s.logs || []).join('\\n') || '(no logs yet)';
 }
-refresh();
-setInterval(refresh, 3000);
 </script>
 </body>
 </html>

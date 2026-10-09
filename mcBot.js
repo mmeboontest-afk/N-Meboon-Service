@@ -57,6 +57,7 @@ class BotController {
       serverHost: this.config?.host,
       serverPort: this.config?.port,
       stage: this.stage,
+      hasRegistered: this.memoryState.hasRegistered,
       lastDeathPosition: this.memoryState.lastDeathPosition,
       inventorySnapshot: this.memoryState.inventorySnapshot,
       stats: this.memoryState.stats,
@@ -67,6 +68,7 @@ class BotController {
   async loadPastMemory() {
     const loaded = await memory.loadMemory();
     if (loaded) {
+      this.memoryState.hasRegistered = loaded.hasRegistered || false;
       this.memoryState.lastDeathPosition = loaded.lastDeathPosition;
       this.memoryState.inventorySnapshot = loaded.inventorySnapshot;
       this.memoryState.stats = loaded.stats || {};
@@ -79,12 +81,31 @@ class BotController {
   }
 
   /** Step 1 — must be called with valid settings before start() is allowed. */
-  setConfig({ host, port, botName, mode }) {
+  setConfig({ host, port, botName, mode, authEnabled, authPassword, registerCommand, loginCommand }) {
     if (!host) throw new Error('Server host is required.');
     if (!MODE_RUNNERS[mode]) throw new Error(`Unknown mode "${mode}".`);
-    this.config = { host, port: port ? Number(port) : 25565, botName: botName || 'NMeboonBot', mode };
-    this.log(`Configured: ${this.config.botName} -> ${host}:${this.config.port} [${mode}]`);
+    this.config = {
+      host, port: port ? Number(port) : 25565, botName: botName || 'NMeboonBot', mode,
+      authEnabled: !!authEnabled,
+      authPassword: authPassword || '',
+      registerCommand: registerCommand || '/register {password} {password}',
+      loginCommand: loginCommand || '/login {password}',
+    };
+    this.log(`Configured: ${this.config.botName} -> ${host}:${this.config.port} [${mode}]${this.config.authEnabled ? ' (auth enabled)' : ''}`);
     return this.config;
+  }
+
+  /** Sends the register (first time only) or login (every time after) chat command. */
+  async handleServerAuth() {
+    if (!this.config.authEnabled) return;
+    const cmdTemplate = this.memoryState.hasRegistered ? this.config.loginCommand : this.config.registerCommand;
+    const command = cmdTemplate.replaceAll('{password}', this.config.authPassword);
+    this.log(`Sending ${this.memoryState.hasRegistered ? 'login' : 'register'} command (password hidden).`);
+    this.bot.chat(command);
+    if (!this.memoryState.hasRegistered) {
+      this.memoryState.hasRegistered = true;
+      this.scheduleMemorySave();
+    }
   }
 
   isConfigured() {
@@ -111,8 +132,16 @@ class BotController {
     this.bot.loadPlugin(pathfinder);
     this._lastError = null;
 
-    this.bot.once('spawn', () => {
+    this.bot.once('spawn', async () => {
       this.log(`Spawned in world as ${this.config.botName}.`);
+
+      if (this.config.authEnabled) {
+        // Give the world/chat a moment to settle before typing — most
+        // register/login plugins expect this rather than an instant message.
+        await new Promise((r) => setTimeout(r, 1500));
+        await this.handleServerAuth().catch((err) => this.log('Auth chat failed: ' + err.message));
+      }
+
       const ctx = {
         log: (l) => this.log(l),
         setStage: (s) => this.setStage(s),
@@ -145,10 +174,11 @@ class BotController {
   }
 
   getStatus() {
+    const safeConfig = this.config ? { ...this.config, authPassword: this.config.authPassword ? '••••••' : '' } : null;
     return {
       configured: this.isConfigured(),
       running: this.isRunning(),
-      config: this.config,
+      config: safeConfig,
       stage: this.stage,
       lastError: this._lastError,
       health: this.bot?.health ?? null,
