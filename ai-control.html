@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI Control — N'Meboon MC Bot</title>
+<style>
+  :root{ --green:#2FD675; --yellow:#FFCF3D; --blue:#37AEFF; --ink:#14171A; --muted:#6B7280; --card:#fff; --border:#ECECE4; }
+  *{box-sizing:border-box;}
+  body{ font-family:system-ui,sans-serif; background:#FAFAF6; color:var(--ink); margin:0; padding:24px; }
+  .wrap{ max-width:720px; margin:0 auto; }
+  h1{ font-size:1.5rem; }
+  .card{ background:var(--card); border:1px solid var(--border); border-radius:16px; padding:20px; margin-bottom:18px; }
+  label{ display:block; font-weight:600; font-size:.85rem; margin:12px 0 4px; }
+  input, select{ width:100%; padding:10px; border-radius:10px; border:1px solid var(--border); font-size:1rem; }
+  .row{ display:flex; gap:12px; }
+  .row > div{ flex:1; }
+  button{ border:none; border-radius:999px; padding:12px 22px; font-weight:700; cursor:pointer; margin-top:14px; margin-right:8px; }
+  .btn-primary{ background:var(--ink); color:#fff; }
+  .btn-green{ background:var(--green); color:#063; }
+  .btn-red{ background:#FF5C5C; color:#fff; }
+  .status-dot{ display:inline-block; width:10px; height:10px; border-radius:50%; margin-right:6px; }
+  .ok{ background:var(--green); } .off{ background:#ccc; } .err{ background:#FF5C5C; }
+  pre{ background:#14171A; color:#C8FA5C; padding:14px; border-radius:12px; max-height:260px; overflow:auto; font-size:.8rem; }
+  .msg{ font-size:.85rem; margin-top:8px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>🎮 AI Control — Minecraft Bot</h1>
+
+  <div class="card" id="pin-gate" style="display:none">
+    <h3>🔒 Enter PIN</h3>
+    <input id="pin-input" type="password" placeholder="PIN" autocomplete="off">
+    <button class="btn-primary" onclick="submitPin()">Unlock</button>
+    <div id="pin-msg" class="msg"></div>
+  </div>
+
+  <div id="panel" style="display:none">
+  <div class="card">
+    <h3>1. Configure (required before the bot can connect)</h3>
+    <div class="row">
+      <div><label>Server Host</label><input id="host" placeholder="play.example.com"></div>
+      <div><label>Port</label><input id="port" placeholder="25565" value="25565"></div>
+    </div>
+    <label>Bot Name</label>
+    <input id="botName" placeholder="NMeeperBot">
+    <label>Mode</label>
+    <select id="mode">
+      <option value="custom1">Custom 1 — travel to coords, gather, hunt, defend</option>
+      <option value="survival">Survival (coming soon)</option>
+      <option value="pvp">PVP (coming soon)</option>
+      <option value="farming">Farming (coming soon)</option>
+    </select>
+
+    <label style="margin-top:18px"><input type="checkbox" id="authEnabled" style="width:auto; vertical-align:middle"> This server requires /register or /login on join</label>
+    <div id="auth-fields" style="display:none">
+      <label>Password</label>
+      <input id="authPassword" type="password" placeholder="Server login password" autocomplete="off">
+      <label>Register Command <span style="font-weight:400; color:var(--muted)">(sent only the very first time)</span></label>
+      <input id="registerCommand" value="/register {password} {password}">
+      <label>Login Command <span style="font-weight:400; color:var(--muted)">(sent every time after that)</span></label>
+      <input id="loginCommand" value="/login {password}">
+    </div>
+    <script>
+      document.getElementById('authEnabled').addEventListener('change', (e) => {
+        document.getElementById('auth-fields').style.display = e.target.checked ? 'block' : 'none';
+      });
+    </script>
+
+    <button class="btn-primary" onclick="saveConfig()">Save Config</button>
+    <div id="config-msg" class="msg"></div>
+  </div>
+
+  <div class="card">
+    <h3>2. Control</h3>
+    <p><span id="status-dot" class="status-dot off"></span><span id="status-text">Checking…</span></p>
+    <button class="btn-green" onclick="startBot()">▶ Start</button>
+    <button class="btn-red" onclick="stopBot()">⏹ Stop</button>
+    <div id="control-msg" class="msg"></div>
+  </div>
+
+  <div class="card">
+    <h3>Live Status</h3>
+    <p id="detail"></p>
+    <pre id="logs">Loading…</pre>
+  </div>
+  </div>
+</div>
+
+<script>
+async function api(path, opts) {
+  const res = await fetch(path, Object.assign({ headers: { 'Content-Type': 'application/json' } }, opts));
+  if (res.status === 401) { showGate('Session expired — enter the PIN again.'); throw new Error('not_authed'); }
+  return res.json();
+}
+
+function showGate(msg) {
+  document.getElementById('pin-gate').style.display = 'block';
+  document.getElementById('panel').style.display = 'none';
+  if (msg) document.getElementById('pin-msg').textContent = msg;
+}
+function showPanel() {
+  document.getElementById('pin-gate').style.display = 'none';
+  document.getElementById('panel').style.display = 'block';
+  refresh();
+  setInterval(refresh, 3000);
+}
+
+async function submitPin() {
+  const pin = document.getElementById('pin-input').value;
+  const res = await fetch('/api/login', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ pin }) });
+  const r = await res.json();
+  if (r.ok) { showPanel(); } else { document.getElementById('pin-msg').textContent = '❌ ' + r.error; }
+}
+
+(async function init() {
+  const res = await fetch('/api/status');
+  if (res.status === 401) showGate(); else showPanel();
+})();
+
+async function saveConfig() {
+  const body = {
+    host: document.getElementById('host').value.trim(),
+    port: document.getElementById('port').value.trim(),
+    botName: document.getElementById('botName').value.trim(),
+    mode: document.getElementById('mode').value,
+    authEnabled: document.getElementById('authEnabled').checked,
+    authPassword: document.getElementById('authPassword').value,
+    registerCommand: document.getElementById('registerCommand').value,
+    loginCommand: document.getElementById('loginCommand').value,
+  };
+  const r = await api('/api/config', { method: 'POST', body: JSON.stringify(body) });
+  document.getElementById('config-msg').textContent = r.ok ? '✅ Saved — you can Start now.' : '❌ ' + r.error;
+}
+
+async function startBot() {
+  const r = await api('/api/start', { method: 'POST' });
+  document.getElementById('control-msg').textContent = r.ok ? '✅ Starting…' : '❌ ' + r.error;
+  refresh();
+}
+async function stopBot() {
+  const r = await api('/api/stop', { method: 'POST' });
+  document.getElementById('control-msg').textContent = r.ok ? '✅ Stopped.' : '❌ ' + r.error;
+  refresh();
+}
+
+async function refresh() {
+  const s = await api('/api/status');
+  const dot = document.getElementById('status-dot');
+  dot.className = 'status-dot ' + (s.running ? 'ok' : (s.lastError ? 'err' : 'off'));
+  document.getElementById('status-text').textContent =
+    (s.running ? 'Running' : (s.configured ? 'Configured, not started' : 'Not configured')) +
+    (s.stage ? ' · stage: ' + s.stage : '');
+  document.getElementById('detail').textContent =
+    (s.config ? `${s.config.botName} -> ${s.config.host}:${s.config.port} [${s.config.mode}]` : 'No config yet') +
+    (s.health != null ? ` · health: ${s.health}` : '') +
+    (s.position ? ` · pos: ${Math.round(s.position.x)},${Math.round(s.position.y)},${Math.round(s.position.z)}` : '');
+  document.getElementById('logs').textContent = (s.logs || []).join('\\n') || '(no logs yet)';
+}
+</script>
+</body>
+</html>
